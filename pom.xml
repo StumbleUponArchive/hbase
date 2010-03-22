@@ -501,6 +501,7 @@
     <stax-api>1.0.1</stax-api>
     <thrift.version>0.2.0</thrift.version>
     <guava.version>r05</guava.version>
+    <json-simple.version>1.1</json-simple.version>
   </properties>
 
   <dependencyManagement>
@@ -709,6 +710,11 @@
       <groupId>com.sun.jersey</groupId>
       <artifactId>jersey-core</artifactId>
       <version>${jersey.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.googlecode.json-simple</groupId>
+      <artifactId>json-simple</artifactId>
+      <version>${json-simple.version}</version>
     </dependency>
     <dependency>
       <groupId>com.sun.jersey</groupId>
