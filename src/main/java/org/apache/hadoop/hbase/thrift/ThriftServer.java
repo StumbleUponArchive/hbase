@@ -53,6 +53,7 @@ import org.apache.hadoop.hbase.thrift.generated.ColumnDescriptor;
 import org.apache.hadoop.hbase.thrift.generated.Hbase;
 import org.apache.hadoop.hbase.thrift.generated.IOError;
 import org.apache.hadoop.hbase.thrift.generated.IllegalArgument;
+import org.apache.hadoop.hbase.thrift.generated.Increment;
 import org.apache.hadoop.hbase.thrift.generated.Mutation;
 import org.apache.hadoop.hbase.thrift.generated.TCell;
 import org.apache.hadoop.hbase.thrift.generated.TRegionInfo;
@@ -110,7 +111,6 @@ public class ThriftServer {
       }
 
     };
-
     /**
      * Returns a list of all the column families for a given htable.
      *
@@ -137,7 +137,7 @@ public class ThriftServer {
      * @throws IOException
      * @throws IOError
      */
-    protected HTable getTable(final byte[] tableName) throws IOError,
+    protected HTable getTable(final byte[] tableName) throws
         IOException {
       String table = new String(tableName);
       Map<String, HTable> tables = threadLocalTables.get();
@@ -188,6 +188,8 @@ public class ThriftServer {
      */
     HBaseHandler() throws MasterNotRunningException {
       conf = HBaseConfiguration.create();
+      // be way more aggressive about time outs.
+      conf.setInt("hbase.client.retries.number", 4);
       admin = new HBaseAdmin(conf);
       scannerMap = new HashMap<Integer, ResultScanner>();
     }
@@ -569,6 +571,35 @@ public class ThriftServer {
       return atomicIncrement(tableName, row, famAndQf[0], famAndQf[1], amount);
     }
 
+    @Override
+    public void asyncAtomicIncrements(List<Increment> increments) throws TException {
+      int failures = 0;
+      for(Increment incr : increments) {
+        try {
+          HTable table = getTable(incr.getTable());
+          byte [][]famAndQf = KeyValue.parseColumn(incr.getColumn());
+          if (famAndQf.length != 2)
+            throw new IOException("Bad column: " + Bytes.toString(incr.getColumn()));
+          if (failures > 2) {
+            throw new IOException("Auto-Fail rest of ICVs");
+          }
+          table.incrementColumnValue(
+              incr.getRow(),
+              famAndQf[0],
+              famAndQf[1],
+              incr.getAmount());
+        } catch (IOException e) {
+          // log failure of increment
+          failures++;
+          LOG.error("FAILED_ICV: "
+          + Bytes.toString(incr.getTable()) + ", "
+          + Bytes.toStringBinary(incr.getRow()) + ", "
+          + Bytes.toStringBinary(incr.getColumn()) + ", "
+          + incr.getAmount());
+        }
+      }
+    }
+
     public long atomicIncrement(byte [] tableName, byte [] row, byte [] family,
         byte [] qualifier, long amount)
     throws IOError, IllegalArgument, TException {
@@ -589,6 +620,30 @@ public class ThriftServer {
       }
       scanner.close();
       removeScanner(id);
+    }
+
+    @Override
+    public List<TRowResult> parallelGet(byte[] tableName,
+                                        byte[] column,
+                                        List<byte[]> rows) throws TException, IOError {
+      try {
+        HTable table = getTable(tableName);
+        List<TRowResult> results = new ArrayList<TRowResult>(rows.size());
+
+        // TODO parallel get instead of 1 at a time.
+        for (byte[] row : rows) {
+          final Get get = new Get(row);
+          get.addColumn(column);
+          Result res = table.get(get);
+
+          if (res != null && !res.isEmpty()) {
+            results.addAll(ThriftUtilities.rowResultFromHBase(res));
+          }
+        }
+        return results;
+      } catch (IOException e) {
+        throw new IOError(e.getMessage());
+      }
     }
 
     public List<TRowResult> scannerGetList(int id,int nbRows) throws IllegalArgument, IOError {

@@ -142,7 +142,7 @@ public class ThriftUtilities {
     }
     return results;
   }
-
+  
   static public List<TRowResult> rowResultFromHBase(Result in) {
     Result [] result = { in };
     return rowResultFromHBase(result);

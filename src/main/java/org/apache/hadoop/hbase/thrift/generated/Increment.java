@@ -24,24 +24,27 @@ import org.apache.thrift.meta_data.*;
 import org.apache.thrift.protocol.*;
 
 /**
- * A Mutation object is used to either update or delete a column-value.
+ * For batch increments.
  */
-public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, Cloneable, Comparable<Mutation> {
-  private static final TStruct STRUCT_DESC = new TStruct("Mutation");
+public class Increment implements TBase<Increment._Fields>, java.io.Serializable, Cloneable, Comparable<Increment> {
+  private static final TStruct STRUCT_DESC = new TStruct("Increment");
 
-  private static final TField IS_DELETE_FIELD_DESC = new TField("isDelete", TType.BOOL, (short)1);
-  private static final TField COLUMN_FIELD_DESC = new TField("column", TType.STRING, (short)2);
-  private static final TField VALUE_FIELD_DESC = new TField("value", TType.STRING, (short)3);
+  private static final TField TABLE_FIELD_DESC = new TField("table", TType.STRING, (short)1);
+  private static final TField ROW_FIELD_DESC = new TField("row", TType.STRING, (short)2);
+  private static final TField COLUMN_FIELD_DESC = new TField("column", TType.STRING, (short)3);
+  private static final TField AMOUNT_FIELD_DESC = new TField("amount", TType.I64, (short)4);
 
-  public boolean isDelete;
+  public byte[] table;
+  public byte[] row;
   public byte[] column;
-  public byte[] value;
+  public long amount;
 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
   public enum _Fields implements TFieldIdEnum {
-    IS_DELETE((short)1, "isDelete"),
-    COLUMN((short)2, "column"),
-    VALUE((short)3, "value");
+    TABLE((short)1, "table"),
+    ROW((short)2, "row"),
+    COLUMN((short)3, "column"),
+    AMOUNT((short)4, "amount");
 
     private static final Map<Integer, _Fields> byId = new HashMap<Integer, _Fields>();
     private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
@@ -95,91 +98,121 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
   }
 
   // isset id assignments
-  private static final int __ISDELETE_ISSET_ID = 0;
+  private static final int __AMOUNT_ISSET_ID = 0;
   private BitSet __isset_bit_vector = new BitSet(1);
 
   public static final Map<_Fields, FieldMetaData> metaDataMap = Collections.unmodifiableMap(new EnumMap<_Fields, FieldMetaData>(_Fields.class) {{
-    put(_Fields.IS_DELETE, new FieldMetaData("isDelete", TFieldRequirementType.DEFAULT, 
-        new FieldValueMetaData(TType.BOOL)));
+    put(_Fields.TABLE, new FieldMetaData("table", TFieldRequirementType.DEFAULT, 
+        new FieldValueMetaData(TType.STRING)));
+    put(_Fields.ROW, new FieldMetaData("row", TFieldRequirementType.DEFAULT, 
+        new FieldValueMetaData(TType.STRING)));
     put(_Fields.COLUMN, new FieldMetaData("column", TFieldRequirementType.DEFAULT, 
         new FieldValueMetaData(TType.STRING)));
-    put(_Fields.VALUE, new FieldMetaData("value", TFieldRequirementType.DEFAULT, 
-        new FieldValueMetaData(TType.STRING)));
+    put(_Fields.AMOUNT, new FieldMetaData("amount", TFieldRequirementType.DEFAULT, 
+        new FieldValueMetaData(TType.I64)));
   }});
 
   static {
-    FieldMetaData.addStructMetaDataMap(Mutation.class, metaDataMap);
+    FieldMetaData.addStructMetaDataMap(Increment.class, metaDataMap);
   }
 
-  public Mutation() {
-    this.isDelete = false;
-
+  public Increment() {
   }
 
-  public Mutation(
-    boolean isDelete,
+  public Increment(
+    byte[] table,
+    byte[] row,
     byte[] column,
-    byte[] value)
+    long amount)
   {
     this();
-    this.isDelete = isDelete;
-    setIsDeleteIsSet(true);
+    this.table = table;
+    this.row = row;
     this.column = column;
-    this.value = value;
+    this.amount = amount;
+    setAmountIsSet(true);
   }
 
   /**
    * Performs a deep copy on <i>other</i>.
    */
-  public Mutation(Mutation other) {
+  public Increment(Increment other) {
     __isset_bit_vector.clear();
     __isset_bit_vector.or(other.__isset_bit_vector);
-    this.isDelete = other.isDelete;
+    if (other.isSetTable()) {
+      this.table = other.table;
+    }
+    if (other.isSetRow()) {
+      this.row = other.row;
+    }
     if (other.isSetColumn()) {
       this.column = other.column;
     }
-    if (other.isSetValue()) {
-      this.value = other.value;
-    }
+    this.amount = other.amount;
   }
 
-  public Mutation deepCopy() {
-    return new Mutation(this);
+  public Increment deepCopy() {
+    return new Increment(this);
   }
 
   @Deprecated
-  public Mutation clone() {
-    return new Mutation(this);
+  public Increment clone() {
+    return new Increment(this);
   }
 
-  public boolean isIsDelete() {
-    return this.isDelete;
+  public byte[] getTable() {
+    return this.table;
   }
 
-  public Mutation setIsDelete(boolean isDelete) {
-    this.isDelete = isDelete;
-    setIsDeleteIsSet(true);
+  public Increment setTable(byte[] table) {
+    this.table = table;
     return this;
   }
 
-  public void unsetIsDelete() {
-    __isset_bit_vector.clear(__ISDELETE_ISSET_ID);
+  public void unsetTable() {
+    this.table = null;
   }
 
-  /** Returns true if field isDelete is set (has been asigned a value) and false otherwise */
-  public boolean isSetIsDelete() {
-    return __isset_bit_vector.get(__ISDELETE_ISSET_ID);
+  /** Returns true if field table is set (has been asigned a value) and false otherwise */
+  public boolean isSetTable() {
+    return this.table != null;
   }
 
-  public void setIsDeleteIsSet(boolean value) {
-    __isset_bit_vector.set(__ISDELETE_ISSET_ID, value);
+  public void setTableIsSet(boolean value) {
+    if (!value) {
+      this.table = null;
+    }
+  }
+
+  public byte[] getRow() {
+    return this.row;
+  }
+
+  public Increment setRow(byte[] row) {
+    this.row = row;
+    return this;
+  }
+
+  public void unsetRow() {
+    this.row = null;
+  }
+
+  /** Returns true if field row is set (has been asigned a value) and false otherwise */
+  public boolean isSetRow() {
+    return this.row != null;
+  }
+
+  public void setRowIsSet(boolean value) {
+    if (!value) {
+      this.row = null;
+    }
   }
 
   public byte[] getColumn() {
     return this.column;
   }
 
-  public Mutation setColumn(byte[] column) {
+  public Increment setColumn(byte[] column) {
     this.column = column;
     return this;
   }
@@ -199,37 +232,44 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
     }
   }
 
-  public byte[] getValue() {
-    return this.value;
+  public long getAmount() {
+    return this.amount;
   }
 
-  public Mutation setValue(byte[] value) {
-    this.value = value;
+  public Increment setAmount(long amount) {
+    this.amount = amount;
+    setAmountIsSet(true);
     return this;
   }
 
-  public void unsetValue() {
-    this.value = null;
+  public void unsetAmount() {
+    __isset_bit_vector.clear(__AMOUNT_ISSET_ID);
   }
 
-  /** Returns true if field value is set (has been asigned a value) and false otherwise */
-  public boolean isSetValue() {
-    return this.value != null;
+  /** Returns true if field amount is set (has been asigned a value) and false otherwise */
+  public boolean isSetAmount() {
+    return __isset_bit_vector.get(__AMOUNT_ISSET_ID);
   }
 
-  public void setValueIsSet(boolean value) {
-    if (!value) {
-      this.value = null;
-    }
+  public void setAmountIsSet(boolean value) {
+    __isset_bit_vector.set(__AMOUNT_ISSET_ID, value);
   }
 
   public void setFieldValue(_Fields field, Object value) {
     switch (field) {
-    case IS_DELETE:
+    case TABLE:
       if (value == null) {
-        unsetIsDelete();
+        unsetTable();
       } else {
-        setIsDelete((Boolean)value);
+        setTable((byte[])value);
+      }
+      break;
+
+    case ROW:
+      if (value == null) {
+        unsetRow();
+      } else {
+        setRow((byte[])value);
       }
       break;
 
@@ -241,11 +281,11 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
       }
       break;
 
-    case VALUE:
+    case AMOUNT:
       if (value == null) {
-        unsetValue();
+        unsetAmount();
       } else {
-        setValue((byte[])value);
+        setAmount((Long)value);
       }
       break;
 
@@ -258,14 +298,17 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
 
   public Object getFieldValue(_Fields field) {
     switch (field) {
-    case IS_DELETE:
-      return new Boolean(isIsDelete());
+    case TABLE:
+      return getTable();
+
+    case ROW:
+      return getRow();
 
     case COLUMN:
       return getColumn();
 
-    case VALUE:
-      return getValue();
+    case AMOUNT:
+      return new Long(getAmount());
 
     }
     throw new IllegalStateException();
@@ -278,12 +321,14 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
   /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
   public boolean isSet(_Fields field) {
     switch (field) {
-    case IS_DELETE:
-      return isSetIsDelete();
+    case TABLE:
+      return isSetTable();
+    case ROW:
+      return isSetRow();
     case COLUMN:
       return isSetColumn();
-    case VALUE:
-      return isSetValue();
+    case AMOUNT:
+      return isSetAmount();
     }
     throw new IllegalStateException();
   }
@@ -296,21 +341,30 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
   public boolean equals(Object that) {
     if (that == null)
       return false;
-    if (that instanceof Mutation)
-      return this.equals((Mutation)that);
+    if (that instanceof Increment)
+      return this.equals((Increment)that);
     return false;
   }
 
-  public boolean equals(Mutation that) {
+  public boolean equals(Increment that) {
     if (that == null)
       return false;
 
-    boolean this_present_isDelete = true;
-    boolean that_present_isDelete = true;
-    if (this_present_isDelete || that_present_isDelete) {
-      if (!(this_present_isDelete && that_present_isDelete))
+    boolean this_present_table = true && this.isSetTable();
+    boolean that_present_table = true && that.isSetTable();
+    if (this_present_table || that_present_table) {
+      if (!(this_present_table && that_present_table))
         return false;
-      if (this.isDelete != that.isDelete)
+      if (!java.util.Arrays.equals(this.table, that.table))
+        return false;
+    }
+
+    boolean this_present_row = true && this.isSetRow();
+    boolean that_present_row = true && that.isSetRow();
+    if (this_present_row || that_present_row) {
+      if (!(this_present_row && that_present_row))
+        return false;
+      if (!java.util.Arrays.equals(this.row, that.row))
         return false;
     }
 
@@ -323,12 +377,12 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
         return false;
     }
 
-    boolean this_present_value = true && this.isSetValue();
-    boolean that_present_value = true && that.isSetValue();
-    if (this_present_value || that_present_value) {
-      if (!(this_present_value && that_present_value))
+    boolean this_present_amount = true;
+    boolean that_present_amount = true;
+    if (this_present_amount || that_present_amount) {
+      if (!(this_present_amount && that_present_amount))
         return false;
-      if (!java.util.Arrays.equals(this.value, that.value))
+      if (this.amount != that.amount)
         return false;
     }
 
@@ -340,19 +394,27 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
     return 0;
   }
 
-  public int compareTo(Mutation other) {
+  public int compareTo(Increment other) {
     if (!getClass().equals(other.getClass())) {
       return getClass().getName().compareTo(other.getClass().getName());
     }
 
     int lastComparison = 0;
-    Mutation typedOther = (Mutation)other;
+    Increment typedOther = (Increment)other;
 
-    lastComparison = Boolean.valueOf(isSetIsDelete()).compareTo(isSetIsDelete());
+    lastComparison = Boolean.valueOf(isSetTable()).compareTo(isSetTable());
     if (lastComparison != 0) {
       return lastComparison;
     }
-    lastComparison = TBaseHelper.compareTo(isDelete, typedOther.isDelete);
+    lastComparison = TBaseHelper.compareTo(table, typedOther.table);
+    if (lastComparison != 0) {
+      return lastComparison;
+    }
+    lastComparison = Boolean.valueOf(isSetRow()).compareTo(isSetRow());
+    if (lastComparison != 0) {
+      return lastComparison;
+    }
+    lastComparison = TBaseHelper.compareTo(row, typedOther.row);
     if (lastComparison != 0) {
       return lastComparison;
     }
@@ -364,11 +426,11 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
     if (lastComparison != 0) {
       return lastComparison;
     }
-    lastComparison = Boolean.valueOf(isSetValue()).compareTo(isSetValue());
+    lastComparison = Boolean.valueOf(isSetAmount()).compareTo(isSetAmount());
     if (lastComparison != 0) {
       return lastComparison;
     }
-    lastComparison = TBaseHelper.compareTo(value, typedOther.value);
+    lastComparison = TBaseHelper.compareTo(amount, typedOther.amount);
     if (lastComparison != 0) {
       return lastComparison;
     }
@@ -389,10 +451,16 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
         TProtocolUtil.skip(iprot, field.type);
       } else {
         switch (fieldId) {
-          case IS_DELETE:
-            if (field.type == TType.BOOL) {
-              this.isDelete = iprot.readBool();
-              setIsDeleteIsSet(true);
+          case TABLE:
+            if (field.type == TType.STRING) {
+              this.table = iprot.readBinary();
+            } else { 
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case ROW:
+            if (field.type == TType.STRING) {
+              this.row = iprot.readBinary();
             } else { 
               TProtocolUtil.skip(iprot, field.type);
             }
@@ -404,9 +472,10 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
               TProtocolUtil.skip(iprot, field.type);
             }
             break;
-          case VALUE:
-            if (field.type == TType.STRING) {
-              this.value = iprot.readBinary();
+          case AMOUNT:
+            if (field.type == TType.I64) {
+              this.amount = iprot.readI64();
+              setAmountIsSet(true);
             } else { 
               TProtocolUtil.skip(iprot, field.type);
             }
@@ -425,30 +494,47 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
     validate();
 
     oprot.writeStructBegin(STRUCT_DESC);
-    oprot.writeFieldBegin(IS_DELETE_FIELD_DESC);
-    oprot.writeBool(this.isDelete);
-    oprot.writeFieldEnd();
+    if (this.table != null) {
+      oprot.writeFieldBegin(TABLE_FIELD_DESC);
+      oprot.writeBinary(this.table);
+      oprot.writeFieldEnd();
+    }
+    if (this.row != null) {
+      oprot.writeFieldBegin(ROW_FIELD_DESC);
+      oprot.writeBinary(this.row);
+      oprot.writeFieldEnd();
+    }
     if (this.column != null) {
       oprot.writeFieldBegin(COLUMN_FIELD_DESC);
       oprot.writeBinary(this.column);
       oprot.writeFieldEnd();
     }
-    if (this.value != null) {
-      oprot.writeFieldBegin(VALUE_FIELD_DESC);
-      oprot.writeBinary(this.value);
-      oprot.writeFieldEnd();
-    }
+    oprot.writeFieldBegin(AMOUNT_FIELD_DESC);
+    oprot.writeI64(this.amount);
+    oprot.writeFieldEnd();
     oprot.writeFieldStop();
     oprot.writeStructEnd();
   }
 
   @Override
   public String toString() {
-    StringBuilder sb = new StringBuilder("Mutation(");
+    StringBuilder sb = new StringBuilder("Increment(");
     boolean first = true;
 
-    sb.append("isDelete:");
-    sb.append(this.isDelete);
+    sb.append("table:");
+    if (this.table == null) {
+      sb.append("null");
+    } else {
+      sb.append(this.table);
+    }
+    first = false;
+    if (!first) sb.append(", ");
+    sb.append("row:");
+    if (this.row == null) {
+      sb.append("null");
+    } else {
+      sb.append(this.row);
+    }
     first = false;
     if (!first) sb.append(", ");
     sb.append("column:");
@@ -459,12 +545,8 @@ public class Mutation implements TBase<Mutation._Fields>, java.io.Serializable, 
     }
     first = false;
     if (!first) sb.append(", ");
-    sb.append("value:");
-    if (this.value == null) {
-      sb.append("null");
-    } else {
-      sb.append(this.value);
-    }
+    sb.append("amount:");
+    sb.append(this.amount);
     first = false;
     sb.append(")");
     return sb.toString();

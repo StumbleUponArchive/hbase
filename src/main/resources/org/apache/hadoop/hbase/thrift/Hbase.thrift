@@ -56,7 +56,7 @@ typedef i32    ScannerID
  * the timestamp of a cell to a first-class value, making it easy to take 
  * note of temporal data. Cell is used all the way from HStore up to HTable.
  */
-struct TCell{
+struct TCell {
   1:Bytes value,
   2:i64 timestamp
 }
@@ -114,6 +114,16 @@ struct BatchMutation {
 struct TRowResult {
   1:Text row,
   2:map<Text, TCell> columns
+}
+
+/**
+ * For batch increments.
+ */
+struct Increment {
+  1:Text table,
+  2:Text row,
+  3:Text column,
+  4:i64 amount
 }
 
 //
@@ -448,6 +458,13 @@ service Hbase {
     /** amount to increment by */
     4:i64 value
   ) throws (1:IOError io, 2:IllegalArgument ia)
+
+  /**
+   * Do an async series of atomic increments.
+   *
+   * @param increments a list of increments to apply
+   */
+  oneway void asyncAtomicIncrements(1:list<Increment> increments)
     
   /** 
    * Delete all cells that match the passed row and column.
@@ -688,4 +705,17 @@ service Hbase {
     /** id of a scanner returned by scannerOpen */
     1:ScannerID id
   ) throws (1:IOError io, 2:IllegalArgument ia)
+  /**
+   * Parallel get. For a given table and column, return for
+   * the given rows.
+   *
+   * @param tableName table to get from
+   * @param column column to get
+   * @param rows a list of rows to get
+   * @result list of TRowResult for each item
+   */
+  list<TRowResult> parallelGet(1:Text tableName,
+                               2:Text column,
+                               3:list<Text> rows)
+                               throws (1:IOError io)
 }
