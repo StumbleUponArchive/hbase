@@ -1403,7 +1403,7 @@ public class HRegionServer implements HRegionInterface,
               ex = RemoteExceptionHandler.checkIOException((IOException) ex);
             }
             if(e != null && e.tries.get() < numRetries) {
-              LOG.warn(ex);
+              LOG.warn("Exception processing message", ex);
               e.tries.incrementAndGet();
               try {
                 toDo.put(e);
