@@ -279,15 +279,6 @@ public class Hbase {
     public long atomicIncrement(byte[] tableName, byte[] row, byte[] column, long value) throws IOError, IllegalArgument, TException;
 
     /**
-     * Do an async series of atomic increments.
-     * 
-     * @param increments a list of increments to apply
-     * 
-     * @param increments
-     */
-    public void asyncAtomicIncrements(List<Increment> increments) throws TException;
-
-    /**
      * Delete all cells that match the passed row and column.
      * 
      * @param tableName name of table
@@ -486,6 +477,25 @@ public class Hbase {
      * @param rows
      */
     public List<TRowResult> parallelGet(byte[] tableName, byte[] column, List<byte[]> rows) throws IOError, TException;
+
+    /**
+     * Do an async series of atomic increments.
+     * 
+     * @param increments a list of increments to apply
+     * 
+     * @param increments
+     */
+    public void asyncAtomicIncrements(List<Increment> increments) throws TException;
+
+    /**
+     * Submit a series of updates to be processed. If the return value
+     * is true, then it worked and you can forget. If the return value
+     * is FALSE then there was a failure and none of the increments were
+     * queued to be applied.
+     * 
+     * @param increments
+     */
+    public boolean queueIncrementColumnValues(List<Increment> increments) throws TException;
 
   }
 
@@ -1327,21 +1337,6 @@ public class Hbase {
       throw new TApplicationException(TApplicationException.MISSING_RESULT, "atomicIncrement failed: unknown result");
     }
 
-    public void asyncAtomicIncrements(List<Increment> increments) throws TException
-    {
-      send_asyncAtomicIncrements(increments);
-    }
-
-    public void send_asyncAtomicIncrements(List<Increment> increments) throws TException
-    {
-      oprot_.writeMessageBegin(new TMessage("asyncAtomicIncrements", TMessageType.CALL, seqid_));
-      asyncAtomicIncrements_args args = new asyncAtomicIncrements_args();
-      args.increments = increments;
-      args.write(oprot_);
-      oprot_.writeMessageEnd();
-      oprot_.getTransport().flush();
-    }
-
     public void deleteAll(byte[] tableName, byte[] row, byte[] column) throws IOError, TException
     {
       send_deleteAll(tableName, row, column);
@@ -1829,6 +1824,54 @@ public class Hbase {
       throw new TApplicationException(TApplicationException.MISSING_RESULT, "parallelGet failed: unknown result");
     }
 
+    public void asyncAtomicIncrements(List<Increment> increments) throws TException
+    {
+      send_asyncAtomicIncrements(increments);
+    }
+
+    public void send_asyncAtomicIncrements(List<Increment> increments) throws TException
+    {
+      oprot_.writeMessageBegin(new TMessage("asyncAtomicIncrements", TMessageType.CALL, seqid_));
+      asyncAtomicIncrements_args args = new asyncAtomicIncrements_args();
+      args.increments = increments;
+      args.write(oprot_);
+      oprot_.writeMessageEnd();
+      oprot_.getTransport().flush();
+    }
+
+    public boolean queueIncrementColumnValues(List<Increment> increments) throws TException
+    {
+      send_queueIncrementColumnValues(increments);
+      return recv_queueIncrementColumnValues();
+    }
+
+    public void send_queueIncrementColumnValues(List<Increment> increments) throws TException
+    {
+      oprot_.writeMessageBegin(new TMessage("queueIncrementColumnValues", TMessageType.CALL, seqid_));
+      queueIncrementColumnValues_args args = new queueIncrementColumnValues_args();
+      args.increments = increments;
+      args.write(oprot_);
+      oprot_.writeMessageEnd();
+      oprot_.getTransport().flush();
+    }
+
+    public boolean recv_queueIncrementColumnValues() throws TException
+    {
+      TMessage msg = iprot_.readMessageBegin();
+      if (msg.type == TMessageType.EXCEPTION) {
+        TApplicationException x = TApplicationException.read(iprot_);
+        iprot_.readMessageEnd();
+        throw x;
+      }
+      queueIncrementColumnValues_result result = new queueIncrementColumnValues_result();
+      result.read(iprot_);
+      iprot_.readMessageEnd();
+      if (result.isSetSuccess()) {
+        return result.success;
+      }
+      throw new TApplicationException(TApplicationException.MISSING_RESULT, "queueIncrementColumnValues failed: unknown result");
+    }
+
   }
   public static class Processor implements TProcessor {
     private static final Logger LOGGER = LoggerFactory.getLogger(Processor.class.getName());
@@ -1857,7 +1900,6 @@ public class Hbase {
       processMap_.put("mutateRows", new mutateRows());
       processMap_.put("mutateRowsTs", new mutateRowsTs());
       processMap_.put("atomicIncrement", new atomicIncrement());
-      processMap_.put("asyncAtomicIncrements", new asyncAtomicIncrements());
       processMap_.put("deleteAll", new deleteAll());
       processMap_.put("deleteAllTs", new deleteAllTs());
       processMap_.put("deleteAllRow", new deleteAllRow());
@@ -1871,6 +1913,8 @@ public class Hbase {
       processMap_.put("scannerGetList", new scannerGetList());
       processMap_.put("scannerClose", new scannerClose());
       processMap_.put("parallelGet", new parallelGet());
+      processMap_.put("asyncAtomicIncrements", new asyncAtomicIncrements());
+      processMap_.put("queueIncrementColumnValues", new queueIncrementColumnValues());
     }
 
     protected static interface ProcessFunction {
@@ -2530,17 +2574,6 @@ public class Hbase {
 
     }
 
-    private class asyncAtomicIncrements implements ProcessFunction {
-      public void process(int seqid, TProtocol iprot, TProtocol oprot) throws TException
-      {
-        asyncAtomicIncrements_args args = new asyncAtomicIncrements_args();
-        args.read(iprot);
-        iprot.readMessageEnd();
-        iface_.asyncAtomicIncrements(args.increments);
-        return;
-      }
-    }
-
     private class deleteAll implements ProcessFunction {
       public void process(int seqid, TProtocol iprot, TProtocol oprot) throws TException
       {
@@ -2909,6 +2942,34 @@ public class Hbase {
           return;
         }
         oprot.writeMessageBegin(new TMessage("parallelGet", TMessageType.REPLY, seqid));
+        result.write(oprot);
+        oprot.writeMessageEnd();
+        oprot.getTransport().flush();
+      }
+
+    }
+
+    private class asyncAtomicIncrements implements ProcessFunction {
+      public void process(int seqid, TProtocol iprot, TProtocol oprot) throws TException
+      {
+        asyncAtomicIncrements_args args = new asyncAtomicIncrements_args();
+        args.read(iprot);
+        iprot.readMessageEnd();
+        iface_.asyncAtomicIncrements(args.increments);
+        return;
+      }
+    }
+
+    private class queueIncrementColumnValues implements ProcessFunction {
+      public void process(int seqid, TProtocol iprot, TProtocol oprot) throws TException
+      {
+        queueIncrementColumnValues_args args = new queueIncrementColumnValues_args();
+        args.read(iprot);
+        iprot.readMessageEnd();
+        queueIncrementColumnValues_result result = new queueIncrementColumnValues_result();
+        result.success = iface_.queueIncrementColumnValues(args.increments);
+        result.setSuccessIsSet(true);
+        oprot.writeMessageBegin(new TMessage("queueIncrementColumnValues", TMessageType.REPLY, seqid));
         result.write(oprot);
         oprot.writeMessageEnd();
         oprot.getTransport().flush();
@@ -20351,327 +20412,6 @@ public class Hbase {
 
   }
 
-  public static class asyncAtomicIncrements_args implements TBase<asyncAtomicIncrements_args._Fields>, java.io.Serializable, Cloneable, Comparable<asyncAtomicIncrements_args>   {
-    private static final TStruct STRUCT_DESC = new TStruct("asyncAtomicIncrements_args");
-
-    private static final TField INCREMENTS_FIELD_DESC = new TField("increments", TType.LIST, (short)1);
-
-    public List<Increment> increments;
-
-    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
-    public enum _Fields implements TFieldIdEnum {
-      INCREMENTS((short)1, "increments");
-
-      private static final Map<Integer, _Fields> byId = new HashMap<Integer, _Fields>();
-      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
-
-      static {
-        for (_Fields field : EnumSet.allOf(_Fields.class)) {
-          byId.put((int)field._thriftId, field);
-          byName.put(field.getFieldName(), field);
-        }
-      }
-
-      /**
-       * Find the _Fields constant that matches fieldId, or null if its not found.
-       */
-      public static _Fields findByThriftId(int fieldId) {
-        return byId.get(fieldId);
-      }
-
-      /**
-       * Find the _Fields constant that matches fieldId, throwing an exception
-       * if it is not found.
-       */
-      public static _Fields findByThriftIdOrThrow(int fieldId) {
-        _Fields fields = findByThriftId(fieldId);
-        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
-        return fields;
-      }
-
-      /**
-       * Find the _Fields constant that matches name, or null if its not found.
-       */
-      public static _Fields findByName(String name) {
-        return byName.get(name);
-      }
-
-      private final short _thriftId;
-      private final String _fieldName;
-
-      _Fields(short thriftId, String fieldName) {
-        _thriftId = thriftId;
-        _fieldName = fieldName;
-      }
-
-      public short getThriftFieldId() {
-        return _thriftId;
-      }
-
-      public String getFieldName() {
-        return _fieldName;
-      }
-    }
-
-    // isset id assignments
-
-    public static final Map<_Fields, FieldMetaData> metaDataMap = Collections.unmodifiableMap(new EnumMap<_Fields, FieldMetaData>(_Fields.class) {{
-      put(_Fields.INCREMENTS, new FieldMetaData("increments", TFieldRequirementType.DEFAULT, 
-          new ListMetaData(TType.LIST, 
-              new StructMetaData(TType.STRUCT, Increment.class))));
-    }});
-
-    static {
-      FieldMetaData.addStructMetaDataMap(asyncAtomicIncrements_args.class, metaDataMap);
-    }
-
-    public asyncAtomicIncrements_args() {
-    }
-
-    public asyncAtomicIncrements_args(
-      List<Increment> increments)
-    {
-      this();
-      this.increments = increments;
-    }
-
-    /**
-     * Performs a deep copy on <i>other</i>.
-     */
-    public asyncAtomicIncrements_args(asyncAtomicIncrements_args other) {
-      if (other.isSetIncrements()) {
-        List<Increment> __this__increments = new ArrayList<Increment>();
-        for (Increment other_element : other.increments) {
-          __this__increments.add(new Increment(other_element));
-        }
-        this.increments = __this__increments;
-      }
-    }
-
-    public asyncAtomicIncrements_args deepCopy() {
-      return new asyncAtomicIncrements_args(this);
-    }
-
-    @Deprecated
-    public asyncAtomicIncrements_args clone() {
-      return new asyncAtomicIncrements_args(this);
-    }
-
-    public int getIncrementsSize() {
-      return (this.increments == null) ? 0 : this.increments.size();
-    }
-
-    public java.util.Iterator<Increment> getIncrementsIterator() {
-      return (this.increments == null) ? null : this.increments.iterator();
-    }
-
-    public void addToIncrements(Increment elem) {
-      if (this.increments == null) {
-        this.increments = new ArrayList<Increment>();
-      }
-      this.increments.add(elem);
-    }
-
-    public List<Increment> getIncrements() {
-      return this.increments;
-    }
-
-    public asyncAtomicIncrements_args setIncrements(List<Increment> increments) {
-      this.increments = increments;
-      return this;
-    }
-
-    public void unsetIncrements() {
-      this.increments = null;
-    }
-
-    /** Returns true if field increments is set (has been asigned a value) and false otherwise */
-    public boolean isSetIncrements() {
-      return this.increments != null;
-    }
-
-    public void setIncrementsIsSet(boolean value) {
-      if (!value) {
-        this.increments = null;
-      }
-    }
-
-    public void setFieldValue(_Fields field, Object value) {
-      switch (field) {
-      case INCREMENTS:
-        if (value == null) {
-          unsetIncrements();
-        } else {
-          setIncrements((List<Increment>)value);
-        }
-        break;
-
-      }
-    }
-
-    public void setFieldValue(int fieldID, Object value) {
-      setFieldValue(_Fields.findByThriftIdOrThrow(fieldID), value);
-    }
-
-    public Object getFieldValue(_Fields field) {
-      switch (field) {
-      case INCREMENTS:
-        return getIncrements();
-
-      }
-      throw new IllegalStateException();
-    }
-
-    public Object getFieldValue(int fieldId) {
-      return getFieldValue(_Fields.findByThriftIdOrThrow(fieldId));
-    }
-
-    /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
-    public boolean isSet(_Fields field) {
-      switch (field) {
-      case INCREMENTS:
-        return isSetIncrements();
-      }
-      throw new IllegalStateException();
-    }
-
-    public boolean isSet(int fieldID) {
-      return isSet(_Fields.findByThriftIdOrThrow(fieldID));
-    }
-
-    @Override
-    public boolean equals(Object that) {
-      if (that == null)
-        return false;
-      if (that instanceof asyncAtomicIncrements_args)
-        return this.equals((asyncAtomicIncrements_args)that);
-      return false;
-    }
-
-    public boolean equals(asyncAtomicIncrements_args that) {
-      if (that == null)
-        return false;
-
-      boolean this_present_increments = true && this.isSetIncrements();
-      boolean that_present_increments = true && that.isSetIncrements();
-      if (this_present_increments || that_present_increments) {
-        if (!(this_present_increments && that_present_increments))
-          return false;
-        if (!this.increments.equals(that.increments))
-          return false;
-      }
-
-      return true;
-    }
-
-    @Override
-    public int hashCode() {
-      return 0;
-    }
-
-    public int compareTo(asyncAtomicIncrements_args other) {
-      if (!getClass().equals(other.getClass())) {
-        return getClass().getName().compareTo(other.getClass().getName());
-      }
-
-      int lastComparison = 0;
-      asyncAtomicIncrements_args typedOther = (asyncAtomicIncrements_args)other;
-
-      lastComparison = Boolean.valueOf(isSetIncrements()).compareTo(isSetIncrements());
-      if (lastComparison != 0) {
-        return lastComparison;
-      }
-      lastComparison = TBaseHelper.compareTo(increments, typedOther.increments);
-      if (lastComparison != 0) {
-        return lastComparison;
-      }
-      return 0;
-    }
-
-    public void read(TProtocol iprot) throws TException {
-      TField field;
-      iprot.readStructBegin();
-      while (true)
-      {
-        field = iprot.readFieldBegin();
-        if (field.type == TType.STOP) { 
-          break;
-        }
-        _Fields fieldId = _Fields.findByThriftId(field.id);
-        if (fieldId == null) {
-          TProtocolUtil.skip(iprot, field.type);
-        } else {
-          switch (fieldId) {
-            case INCREMENTS:
-              if (field.type == TType.LIST) {
-                {
-                  TList _list78 = iprot.readListBegin();
-                  this.increments = new ArrayList<Increment>(_list78.size);
-                  for (int _i79 = 0; _i79 < _list78.size; ++_i79)
-                  {
-                    Increment _elem80;
-                    _elem80 = new Increment();
-                    _elem80.read(iprot);
-                    this.increments.add(_elem80);
-                  }
-                  iprot.readListEnd();
-                }
-              } else { 
-                TProtocolUtil.skip(iprot, field.type);
-              }
-              break;
-          }
-          iprot.readFieldEnd();
-        }
-      }
-      iprot.readStructEnd();
-
-      // check for required fields of primitive type, which can't be checked in the validate method
-      validate();
-    }
-
-    public void write(TProtocol oprot) throws TException {
-      validate();
-
-      oprot.writeStructBegin(STRUCT_DESC);
-      if (this.increments != null) {
-        oprot.writeFieldBegin(INCREMENTS_FIELD_DESC);
-        {
-          oprot.writeListBegin(new TList(TType.STRUCT, this.increments.size()));
-          for (Increment _iter81 : this.increments)
-          {
-            _iter81.write(oprot);
-          }
-          oprot.writeListEnd();
-        }
-        oprot.writeFieldEnd();
-      }
-      oprot.writeFieldStop();
-      oprot.writeStructEnd();
-    }
-
-    @Override
-    public String toString() {
-      StringBuilder sb = new StringBuilder("asyncAtomicIncrements_args(");
-      boolean first = true;
-
-      sb.append("increments:");
-      if (this.increments == null) {
-        sb.append("null");
-      } else {
-        sb.append(this.increments);
-      }
-      first = false;
-      sb.append(")");
-      return sb.toString();
-    }
-
-    public void validate() throws TException {
-      // check for required fields
-    }
-
-  }
-
   public static class deleteAll_args implements TBase<deleteAll_args._Fields>, java.io.Serializable, Cloneable, Comparable<deleteAll_args>   {
     private static final TStruct STRUCT_DESC = new TStruct("deleteAll_args");
 
@@ -24190,13 +23930,13 @@ public class Hbase {
             case COLUMNS:
               if (field.type == TType.LIST) {
                 {
-                  TList _list82 = iprot.readListBegin();
-                  this.columns = new ArrayList<byte[]>(_list82.size);
-                  for (int _i83 = 0; _i83 < _list82.size; ++_i83)
+                  TList _list78 = iprot.readListBegin();
+                  this.columns = new ArrayList<byte[]>(_list78.size);
+                  for (int _i79 = 0; _i79 < _list78.size; ++_i79)
                   {
-                    byte[] _elem84;
-                    _elem84 = iprot.readBinary();
-                    this.columns.add(_elem84);
+                    byte[] _elem80;
+                    _elem80 = iprot.readBinary();
+                    this.columns.add(_elem80);
                   }
                   iprot.readListEnd();
                 }
@@ -24232,9 +23972,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (byte[] _iter85 : this.columns)
+          for (byte[] _iter81 : this.columns)
           {
-            oprot.writeBinary(_iter85);
+            oprot.writeBinary(_iter81);
           }
           oprot.writeListEnd();
         }
@@ -25178,13 +24918,13 @@ public class Hbase {
             case COLUMNS:
               if (field.type == TType.LIST) {
                 {
-                  TList _list86 = iprot.readListBegin();
-                  this.columns = new ArrayList<byte[]>(_list86.size);
-                  for (int _i87 = 0; _i87 < _list86.size; ++_i87)
+                  TList _list82 = iprot.readListBegin();
+                  this.columns = new ArrayList<byte[]>(_list82.size);
+                  for (int _i83 = 0; _i83 < _list82.size; ++_i83)
                   {
-                    byte[] _elem88;
-                    _elem88 = iprot.readBinary();
-                    this.columns.add(_elem88);
+                    byte[] _elem84;
+                    _elem84 = iprot.readBinary();
+                    this.columns.add(_elem84);
                   }
                   iprot.readListEnd();
                 }
@@ -25225,9 +24965,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (byte[] _iter89 : this.columns)
+          for (byte[] _iter85 : this.columns)
           {
-            oprot.writeBinary(_iter89);
+            oprot.writeBinary(_iter85);
           }
           oprot.writeListEnd();
         }
@@ -26080,13 +25820,13 @@ public class Hbase {
             case COLUMNS:
               if (field.type == TType.LIST) {
                 {
-                  TList _list90 = iprot.readListBegin();
-                  this.columns = new ArrayList<byte[]>(_list90.size);
-                  for (int _i91 = 0; _i91 < _list90.size; ++_i91)
+                  TList _list86 = iprot.readListBegin();
+                  this.columns = new ArrayList<byte[]>(_list86.size);
+                  for (int _i87 = 0; _i87 < _list86.size; ++_i87)
                   {
-                    byte[] _elem92;
-                    _elem92 = iprot.readBinary();
-                    this.columns.add(_elem92);
+                    byte[] _elem88;
+                    _elem88 = iprot.readBinary();
+                    this.columns.add(_elem88);
                   }
                   iprot.readListEnd();
                 }
@@ -26122,9 +25862,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (byte[] _iter93 : this.columns)
+          for (byte[] _iter89 : this.columns)
           {
-            oprot.writeBinary(_iter93);
+            oprot.writeBinary(_iter89);
           }
           oprot.writeListEnd();
         }
@@ -27059,13 +26799,13 @@ public class Hbase {
             case COLUMNS:
               if (field.type == TType.LIST) {
                 {
-                  TList _list94 = iprot.readListBegin();
-                  this.columns = new ArrayList<byte[]>(_list94.size);
-                  for (int _i95 = 0; _i95 < _list94.size; ++_i95)
+                  TList _list90 = iprot.readListBegin();
+                  this.columns = new ArrayList<byte[]>(_list90.size);
+                  for (int _i91 = 0; _i91 < _list90.size; ++_i91)
                   {
-                    byte[] _elem96;
-                    _elem96 = iprot.readBinary();
-                    this.columns.add(_elem96);
+                    byte[] _elem92;
+                    _elem92 = iprot.readBinary();
+                    this.columns.add(_elem92);
                   }
                   iprot.readListEnd();
                 }
@@ -27109,9 +26849,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (byte[] _iter97 : this.columns)
+          for (byte[] _iter93 : this.columns)
           {
-            oprot.writeBinary(_iter97);
+            oprot.writeBinary(_iter93);
           }
           oprot.writeListEnd();
         }
@@ -28140,13 +27880,13 @@ public class Hbase {
             case COLUMNS:
               if (field.type == TType.LIST) {
                 {
-                  TList _list98 = iprot.readListBegin();
-                  this.columns = new ArrayList<byte[]>(_list98.size);
-                  for (int _i99 = 0; _i99 < _list98.size; ++_i99)
+                  TList _list94 = iprot.readListBegin();
+                  this.columns = new ArrayList<byte[]>(_list94.size);
+                  for (int _i95 = 0; _i95 < _list94.size; ++_i95)
                   {
-                    byte[] _elem100;
-                    _elem100 = iprot.readBinary();
-                    this.columns.add(_elem100);
+                    byte[] _elem96;
+                    _elem96 = iprot.readBinary();
+                    this.columns.add(_elem96);
                   }
                   iprot.readListEnd();
                 }
@@ -28195,9 +27935,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (byte[] _iter101 : this.columns)
+          for (byte[] _iter97 : this.columns)
           {
-            oprot.writeBinary(_iter101);
+            oprot.writeBinary(_iter97);
           }
           oprot.writeListEnd();
         }
@@ -29264,14 +29004,14 @@ public class Hbase {
             case SUCCESS:
               if (field.type == TType.LIST) {
                 {
-                  TList _list102 = iprot.readListBegin();
-                  this.success = new ArrayList<TRowResult>(_list102.size);
-                  for (int _i103 = 0; _i103 < _list102.size; ++_i103)
+                  TList _list98 = iprot.readListBegin();
+                  this.success = new ArrayList<TRowResult>(_list98.size);
+                  for (int _i99 = 0; _i99 < _list98.size; ++_i99)
                   {
-                    TRowResult _elem104;
-                    _elem104 = new TRowResult();
-                    _elem104.read(iprot);
-                    this.success.add(_elem104);
+                    TRowResult _elem100;
+                    _elem100 = new TRowResult();
+                    _elem100.read(iprot);
+                    this.success.add(_elem100);
                   }
                   iprot.readListEnd();
                 }
@@ -29312,9 +29052,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter105 : this.success)
+          for (TRowResult _iter101 : this.success)
           {
-            _iter105.write(oprot);
+            _iter101.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -30099,14 +29839,14 @@ public class Hbase {
             case SUCCESS:
               if (field.type == TType.LIST) {
                 {
-                  TList _list106 = iprot.readListBegin();
-                  this.success = new ArrayList<TRowResult>(_list106.size);
-                  for (int _i107 = 0; _i107 < _list106.size; ++_i107)
+                  TList _list102 = iprot.readListBegin();
+                  this.success = new ArrayList<TRowResult>(_list102.size);
+                  for (int _i103 = 0; _i103 < _list102.size; ++_i103)
                   {
-                    TRowResult _elem108;
-                    _elem108 = new TRowResult();
-                    _elem108.read(iprot);
-                    this.success.add(_elem108);
+                    TRowResult _elem104;
+                    _elem104 = new TRowResult();
+                    _elem104.read(iprot);
+                    this.success.add(_elem104);
                   }
                   iprot.readListEnd();
                 }
@@ -30147,9 +29887,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter109 : this.success)
+          for (TRowResult _iter105 : this.success)
           {
-            _iter109.write(oprot);
+            _iter105.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -31260,13 +31000,13 @@ public class Hbase {
             case ROWS:
               if (field.type == TType.LIST) {
                 {
-                  TList _list110 = iprot.readListBegin();
-                  this.rows = new ArrayList<byte[]>(_list110.size);
-                  for (int _i111 = 0; _i111 < _list110.size; ++_i111)
+                  TList _list106 = iprot.readListBegin();
+                  this.rows = new ArrayList<byte[]>(_list106.size);
+                  for (int _i107 = 0; _i107 < _list106.size; ++_i107)
                   {
-                    byte[] _elem112;
-                    _elem112 = iprot.readBinary();
-                    this.rows.add(_elem112);
+                    byte[] _elem108;
+                    _elem108 = iprot.readBinary();
+                    this.rows.add(_elem108);
                   }
                   iprot.readListEnd();
                 }
@@ -31302,9 +31042,9 @@ public class Hbase {
         oprot.writeFieldBegin(ROWS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.rows.size()));
-          for (byte[] _iter113 : this.rows)
+          for (byte[] _iter109 : this.rows)
           {
-            oprot.writeBinary(_iter113);
+            oprot.writeBinary(_iter109);
           }
           oprot.writeListEnd();
         }
@@ -31643,14 +31383,14 @@ public class Hbase {
             case SUCCESS:
               if (field.type == TType.LIST) {
                 {
-                  TList _list114 = iprot.readListBegin();
-                  this.success = new ArrayList<TRowResult>(_list114.size);
-                  for (int _i115 = 0; _i115 < _list114.size; ++_i115)
+                  TList _list110 = iprot.readListBegin();
+                  this.success = new ArrayList<TRowResult>(_list110.size);
+                  for (int _i111 = 0; _i111 < _list110.size; ++_i111)
                   {
-                    TRowResult _elem116;
-                    _elem116 = new TRowResult();
-                    _elem116.read(iprot);
-                    this.success.add(_elem116);
+                    TRowResult _elem112;
+                    _elem112 = new TRowResult();
+                    _elem112.read(iprot);
+                    this.success.add(_elem112);
                   }
                   iprot.readListEnd();
                 }
@@ -31683,9 +31423,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter117 : this.success)
+          for (TRowResult _iter113 : this.success)
           {
-            _iter117.write(oprot);
+            _iter113.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -31718,6 +31458,929 @@ public class Hbase {
       } else {
         sb.append(this.io);
       }
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws TException {
+      // check for required fields
+    }
+
+  }
+
+  public static class asyncAtomicIncrements_args implements TBase<asyncAtomicIncrements_args._Fields>, java.io.Serializable, Cloneable, Comparable<asyncAtomicIncrements_args>   {
+    private static final TStruct STRUCT_DESC = new TStruct("asyncAtomicIncrements_args");
+
+    private static final TField INCREMENTS_FIELD_DESC = new TField("increments", TType.LIST, (short)1);
+
+    public List<Increment> increments;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements TFieldIdEnum {
+      INCREMENTS((short)1, "increments");
+
+      private static final Map<Integer, _Fields> byId = new HashMap<Integer, _Fields>();
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byId.put((int)field._thriftId, field);
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        return byId.get(fieldId);
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+
+    public static final Map<_Fields, FieldMetaData> metaDataMap = Collections.unmodifiableMap(new EnumMap<_Fields, FieldMetaData>(_Fields.class) {{
+      put(_Fields.INCREMENTS, new FieldMetaData("increments", TFieldRequirementType.DEFAULT, 
+          new ListMetaData(TType.LIST, 
+              new StructMetaData(TType.STRUCT, Increment.class))));
+    }});
+
+    static {
+      FieldMetaData.addStructMetaDataMap(asyncAtomicIncrements_args.class, metaDataMap);
+    }
+
+    public asyncAtomicIncrements_args() {
+    }
+
+    public asyncAtomicIncrements_args(
+      List<Increment> increments)
+    {
+      this();
+      this.increments = increments;
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public asyncAtomicIncrements_args(asyncAtomicIncrements_args other) {
+      if (other.isSetIncrements()) {
+        List<Increment> __this__increments = new ArrayList<Increment>();
+        for (Increment other_element : other.increments) {
+          __this__increments.add(new Increment(other_element));
+        }
+        this.increments = __this__increments;
+      }
+    }
+
+    public asyncAtomicIncrements_args deepCopy() {
+      return new asyncAtomicIncrements_args(this);
+    }
+
+    @Deprecated
+    public asyncAtomicIncrements_args clone() {
+      return new asyncAtomicIncrements_args(this);
+    }
+
+    public int getIncrementsSize() {
+      return (this.increments == null) ? 0 : this.increments.size();
+    }
+
+    public java.util.Iterator<Increment> getIncrementsIterator() {
+      return (this.increments == null) ? null : this.increments.iterator();
+    }
+
+    public void addToIncrements(Increment elem) {
+      if (this.increments == null) {
+        this.increments = new ArrayList<Increment>();
+      }
+      this.increments.add(elem);
+    }
+
+    public List<Increment> getIncrements() {
+      return this.increments;
+    }
+
+    public asyncAtomicIncrements_args setIncrements(List<Increment> increments) {
+      this.increments = increments;
+      return this;
+    }
+
+    public void unsetIncrements() {
+      this.increments = null;
+    }
+
+    /** Returns true if field increments is set (has been asigned a value) and false otherwise */
+    public boolean isSetIncrements() {
+      return this.increments != null;
+    }
+
+    public void setIncrementsIsSet(boolean value) {
+      if (!value) {
+        this.increments = null;
+      }
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case INCREMENTS:
+        if (value == null) {
+          unsetIncrements();
+        } else {
+          setIncrements((List<Increment>)value);
+        }
+        break;
+
+      }
+    }
+
+    public void setFieldValue(int fieldID, Object value) {
+      setFieldValue(_Fields.findByThriftIdOrThrow(fieldID), value);
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case INCREMENTS:
+        return getIncrements();
+
+      }
+      throw new IllegalStateException();
+    }
+
+    public Object getFieldValue(int fieldId) {
+      return getFieldValue(_Fields.findByThriftIdOrThrow(fieldId));
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      switch (field) {
+      case INCREMENTS:
+        return isSetIncrements();
+      }
+      throw new IllegalStateException();
+    }
+
+    public boolean isSet(int fieldID) {
+      return isSet(_Fields.findByThriftIdOrThrow(fieldID));
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof asyncAtomicIncrements_args)
+        return this.equals((asyncAtomicIncrements_args)that);
+      return false;
+    }
+
+    public boolean equals(asyncAtomicIncrements_args that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_increments = true && this.isSetIncrements();
+      boolean that_present_increments = true && that.isSetIncrements();
+      if (this_present_increments || that_present_increments) {
+        if (!(this_present_increments && that_present_increments))
+          return false;
+        if (!this.increments.equals(that.increments))
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(asyncAtomicIncrements_args other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      asyncAtomicIncrements_args typedOther = (asyncAtomicIncrements_args)other;
+
+      lastComparison = Boolean.valueOf(isSetIncrements()).compareTo(isSetIncrements());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      lastComparison = TBaseHelper.compareTo(increments, typedOther.increments);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      return 0;
+    }
+
+    public void read(TProtocol iprot) throws TException {
+      TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == TType.STOP) { 
+          break;
+        }
+        _Fields fieldId = _Fields.findByThriftId(field.id);
+        if (fieldId == null) {
+          TProtocolUtil.skip(iprot, field.type);
+        } else {
+          switch (fieldId) {
+            case INCREMENTS:
+              if (field.type == TType.LIST) {
+                {
+                  TList _list114 = iprot.readListBegin();
+                  this.increments = new ArrayList<Increment>(_list114.size);
+                  for (int _i115 = 0; _i115 < _list114.size; ++_i115)
+                  {
+                    Increment _elem116;
+                    _elem116 = new Increment();
+                    _elem116.read(iprot);
+                    this.increments.add(_elem116);
+                  }
+                  iprot.readListEnd();
+                }
+              } else { 
+                TProtocolUtil.skip(iprot, field.type);
+              }
+              break;
+          }
+          iprot.readFieldEnd();
+        }
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(TProtocol oprot) throws TException {
+      validate();
+
+      oprot.writeStructBegin(STRUCT_DESC);
+      if (this.increments != null) {
+        oprot.writeFieldBegin(INCREMENTS_FIELD_DESC);
+        {
+          oprot.writeListBegin(new TList(TType.STRUCT, this.increments.size()));
+          for (Increment _iter117 : this.increments)
+          {
+            _iter117.write(oprot);
+          }
+          oprot.writeListEnd();
+        }
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("asyncAtomicIncrements_args(");
+      boolean first = true;
+
+      sb.append("increments:");
+      if (this.increments == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.increments);
+      }
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws TException {
+      // check for required fields
+    }
+
+  }
+
+  public static class queueIncrementColumnValues_args implements TBase<queueIncrementColumnValues_args._Fields>, java.io.Serializable, Cloneable, Comparable<queueIncrementColumnValues_args>   {
+    private static final TStruct STRUCT_DESC = new TStruct("queueIncrementColumnValues_args");
+
+    private static final TField INCREMENTS_FIELD_DESC = new TField("increments", TType.LIST, (short)1);
+
+    public List<Increment> increments;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements TFieldIdEnum {
+      INCREMENTS((short)1, "increments");
+
+      private static final Map<Integer, _Fields> byId = new HashMap<Integer, _Fields>();
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byId.put((int)field._thriftId, field);
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        return byId.get(fieldId);
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+
+    public static final Map<_Fields, FieldMetaData> metaDataMap = Collections.unmodifiableMap(new EnumMap<_Fields, FieldMetaData>(_Fields.class) {{
+      put(_Fields.INCREMENTS, new FieldMetaData("increments", TFieldRequirementType.DEFAULT, 
+          new ListMetaData(TType.LIST, 
+              new StructMetaData(TType.STRUCT, Increment.class))));
+    }});
+
+    static {
+      FieldMetaData.addStructMetaDataMap(queueIncrementColumnValues_args.class, metaDataMap);
+    }
+
+    public queueIncrementColumnValues_args() {
+    }
+
+    public queueIncrementColumnValues_args(
+      List<Increment> increments)
+    {
+      this();
+      this.increments = increments;
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public queueIncrementColumnValues_args(queueIncrementColumnValues_args other) {
+      if (other.isSetIncrements()) {
+        List<Increment> __this__increments = new ArrayList<Increment>();
+        for (Increment other_element : other.increments) {
+          __this__increments.add(new Increment(other_element));
+        }
+        this.increments = __this__increments;
+      }
+    }
+
+    public queueIncrementColumnValues_args deepCopy() {
+      return new queueIncrementColumnValues_args(this);
+    }
+
+    @Deprecated
+    public queueIncrementColumnValues_args clone() {
+      return new queueIncrementColumnValues_args(this);
+    }
+
+    public int getIncrementsSize() {
+      return (this.increments == null) ? 0 : this.increments.size();
+    }
+
+    public java.util.Iterator<Increment> getIncrementsIterator() {
+      return (this.increments == null) ? null : this.increments.iterator();
+    }
+
+    public void addToIncrements(Increment elem) {
+      if (this.increments == null) {
+        this.increments = new ArrayList<Increment>();
+      }
+      this.increments.add(elem);
+    }
+
+    public List<Increment> getIncrements() {
+      return this.increments;
+    }
+
+    public queueIncrementColumnValues_args setIncrements(List<Increment> increments) {
+      this.increments = increments;
+      return this;
+    }
+
+    public void unsetIncrements() {
+      this.increments = null;
+    }
+
+    /** Returns true if field increments is set (has been asigned a value) and false otherwise */
+    public boolean isSetIncrements() {
+      return this.increments != null;
+    }
+
+    public void setIncrementsIsSet(boolean value) {
+      if (!value) {
+        this.increments = null;
+      }
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case INCREMENTS:
+        if (value == null) {
+          unsetIncrements();
+        } else {
+          setIncrements((List<Increment>)value);
+        }
+        break;
+
+      }
+    }
+
+    public void setFieldValue(int fieldID, Object value) {
+      setFieldValue(_Fields.findByThriftIdOrThrow(fieldID), value);
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case INCREMENTS:
+        return getIncrements();
+
+      }
+      throw new IllegalStateException();
+    }
+
+    public Object getFieldValue(int fieldId) {
+      return getFieldValue(_Fields.findByThriftIdOrThrow(fieldId));
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      switch (field) {
+      case INCREMENTS:
+        return isSetIncrements();
+      }
+      throw new IllegalStateException();
+    }
+
+    public boolean isSet(int fieldID) {
+      return isSet(_Fields.findByThriftIdOrThrow(fieldID));
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof queueIncrementColumnValues_args)
+        return this.equals((queueIncrementColumnValues_args)that);
+      return false;
+    }
+
+    public boolean equals(queueIncrementColumnValues_args that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_increments = true && this.isSetIncrements();
+      boolean that_present_increments = true && that.isSetIncrements();
+      if (this_present_increments || that_present_increments) {
+        if (!(this_present_increments && that_present_increments))
+          return false;
+        if (!this.increments.equals(that.increments))
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(queueIncrementColumnValues_args other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      queueIncrementColumnValues_args typedOther = (queueIncrementColumnValues_args)other;
+
+      lastComparison = Boolean.valueOf(isSetIncrements()).compareTo(isSetIncrements());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      lastComparison = TBaseHelper.compareTo(increments, typedOther.increments);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      return 0;
+    }
+
+    public void read(TProtocol iprot) throws TException {
+      TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == TType.STOP) { 
+          break;
+        }
+        _Fields fieldId = _Fields.findByThriftId(field.id);
+        if (fieldId == null) {
+          TProtocolUtil.skip(iprot, field.type);
+        } else {
+          switch (fieldId) {
+            case INCREMENTS:
+              if (field.type == TType.LIST) {
+                {
+                  TList _list118 = iprot.readListBegin();
+                  this.increments = new ArrayList<Increment>(_list118.size);
+                  for (int _i119 = 0; _i119 < _list118.size; ++_i119)
+                  {
+                    Increment _elem120;
+                    _elem120 = new Increment();
+                    _elem120.read(iprot);
+                    this.increments.add(_elem120);
+                  }
+                  iprot.readListEnd();
+                }
+              } else { 
+                TProtocolUtil.skip(iprot, field.type);
+              }
+              break;
+          }
+          iprot.readFieldEnd();
+        }
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(TProtocol oprot) throws TException {
+      validate();
+
+      oprot.writeStructBegin(STRUCT_DESC);
+      if (this.increments != null) {
+        oprot.writeFieldBegin(INCREMENTS_FIELD_DESC);
+        {
+          oprot.writeListBegin(new TList(TType.STRUCT, this.increments.size()));
+          for (Increment _iter121 : this.increments)
+          {
+            _iter121.write(oprot);
+          }
+          oprot.writeListEnd();
+        }
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("queueIncrementColumnValues_args(");
+      boolean first = true;
+
+      sb.append("increments:");
+      if (this.increments == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.increments);
+      }
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws TException {
+      // check for required fields
+    }
+
+  }
+
+  public static class queueIncrementColumnValues_result implements TBase<queueIncrementColumnValues_result._Fields>, java.io.Serializable, Cloneable, Comparable<queueIncrementColumnValues_result>   {
+    private static final TStruct STRUCT_DESC = new TStruct("queueIncrementColumnValues_result");
+
+    private static final TField SUCCESS_FIELD_DESC = new TField("success", TType.BOOL, (short)0);
+
+    public boolean success;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements TFieldIdEnum {
+      SUCCESS((short)0, "success");
+
+      private static final Map<Integer, _Fields> byId = new HashMap<Integer, _Fields>();
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byId.put((int)field._thriftId, field);
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        return byId.get(fieldId);
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+    private static final int __SUCCESS_ISSET_ID = 0;
+    private BitSet __isset_bit_vector = new BitSet(1);
+
+    public static final Map<_Fields, FieldMetaData> metaDataMap = Collections.unmodifiableMap(new EnumMap<_Fields, FieldMetaData>(_Fields.class) {{
+      put(_Fields.SUCCESS, new FieldMetaData("success", TFieldRequirementType.DEFAULT, 
+          new FieldValueMetaData(TType.BOOL)));
+    }});
+
+    static {
+      FieldMetaData.addStructMetaDataMap(queueIncrementColumnValues_result.class, metaDataMap);
+    }
+
+    public queueIncrementColumnValues_result() {
+    }
+
+    public queueIncrementColumnValues_result(
+      boolean success)
+    {
+      this();
+      this.success = success;
+      setSuccessIsSet(true);
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public queueIncrementColumnValues_result(queueIncrementColumnValues_result other) {
+      __isset_bit_vector.clear();
+      __isset_bit_vector.or(other.__isset_bit_vector);
+      this.success = other.success;
+    }
+
+    public queueIncrementColumnValues_result deepCopy() {
+      return new queueIncrementColumnValues_result(this);
+    }
+
+    @Deprecated
+    public queueIncrementColumnValues_result clone() {
+      return new queueIncrementColumnValues_result(this);
+    }
+
+    public boolean isSuccess() {
+      return this.success;
+    }
+
+    public queueIncrementColumnValues_result setSuccess(boolean success) {
+      this.success = success;
+      setSuccessIsSet(true);
+      return this;
+    }
+
+    public void unsetSuccess() {
+      __isset_bit_vector.clear(__SUCCESS_ISSET_ID);
+    }
+
+    /** Returns true if field success is set (has been asigned a value) and false otherwise */
+    public boolean isSetSuccess() {
+      return __isset_bit_vector.get(__SUCCESS_ISSET_ID);
+    }
+
+    public void setSuccessIsSet(boolean value) {
+      __isset_bit_vector.set(__SUCCESS_ISSET_ID, value);
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case SUCCESS:
+        if (value == null) {
+          unsetSuccess();
+        } else {
+          setSuccess((Boolean)value);
+        }
+        break;
+
+      }
+    }
+
+    public void setFieldValue(int fieldID, Object value) {
+      setFieldValue(_Fields.findByThriftIdOrThrow(fieldID), value);
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case SUCCESS:
+        return new Boolean(isSuccess());
+
+      }
+      throw new IllegalStateException();
+    }
+
+    public Object getFieldValue(int fieldId) {
+      return getFieldValue(_Fields.findByThriftIdOrThrow(fieldId));
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      switch (field) {
+      case SUCCESS:
+        return isSetSuccess();
+      }
+      throw new IllegalStateException();
+    }
+
+    public boolean isSet(int fieldID) {
+      return isSet(_Fields.findByThriftIdOrThrow(fieldID));
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof queueIncrementColumnValues_result)
+        return this.equals((queueIncrementColumnValues_result)that);
+      return false;
+    }
+
+    public boolean equals(queueIncrementColumnValues_result that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_success = true;
+      boolean that_present_success = true;
+      if (this_present_success || that_present_success) {
+        if (!(this_present_success && that_present_success))
+          return false;
+        if (this.success != that.success)
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(queueIncrementColumnValues_result other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      queueIncrementColumnValues_result typedOther = (queueIncrementColumnValues_result)other;
+
+      lastComparison = Boolean.valueOf(isSetSuccess()).compareTo(isSetSuccess());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      lastComparison = TBaseHelper.compareTo(success, typedOther.success);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      return 0;
+    }
+
+    public void read(TProtocol iprot) throws TException {
+      TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == TType.STOP) { 
+          break;
+        }
+        _Fields fieldId = _Fields.findByThriftId(field.id);
+        if (fieldId == null) {
+          TProtocolUtil.skip(iprot, field.type);
+        } else {
+          switch (fieldId) {
+            case SUCCESS:
+              if (field.type == TType.BOOL) {
+                this.success = iprot.readBool();
+                setSuccessIsSet(true);
+              } else { 
+                TProtocolUtil.skip(iprot, field.type);
+              }
+              break;
+          }
+          iprot.readFieldEnd();
+        }
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(TProtocol oprot) throws TException {
+      oprot.writeStructBegin(STRUCT_DESC);
+
+      if (this.isSetSuccess()) {
+        oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
+        oprot.writeBool(this.success);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("queueIncrementColumnValues_result(");
+      boolean first = true;
+
+      sb.append("success:");
+      sb.append(this.success);
       first = false;
       sb.append(")");
       return sb.toString();

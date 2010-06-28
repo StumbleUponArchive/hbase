@@ -460,13 +460,6 @@ service Hbase {
   ) throws (1:IOError io, 2:IllegalArgument ia)
 
   /**
-   * Do an async series of atomic increments.
-   *
-   * @param increments a list of increments to apply
-   */
-  oneway void asyncAtomicIncrements(1:list<Increment> increments)
-    
-  /** 
    * Delete all cells that match the passed row and column.
    */
   void deleteAll(
@@ -704,7 +697,8 @@ service Hbase {
   void scannerClose(
     /** id of a scanner returned by scannerOpen */
     1:ScannerID id
-  ) throws (1:IOError io, 2:IllegalArgument ia)
+  ) throws (1:IOError io, 2:IllegalArgument ia) 
+
   /**
    * Parallel get. For a given table and column, return for
    * the given rows.
@@ -718,4 +712,21 @@ service Hbase {
                                2:Text column,
                                3:list<Text> rows)
                                throws (1:IOError io)
+
+  /**
+   * Do an async series of atomic increments.
+   *
+   * @param increments a list of increments to apply
+   */
+  oneway void asyncAtomicIncrements(1:list<Increment> increments)
+
+  /**
+   * Submit a series of updates to be processed. If the return value
+   * is true, then it worked and you can forget. If the return value
+   * is FALSE then there was a failure and none of the increments were
+   * queued to be applied.
+   */
+  bool queueIncrementColumnValues(1:list<Increment> increments)
+
+
 }

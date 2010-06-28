@@ -18,6 +18,30 @@
 
 package org.apache.hadoop.hbase.thrift;
 
+import javax.management.InstanceAlreadyExistsException;
+import javax.management.MBeanRegistrationException;
+import javax.management.MBeanServer;
+import javax.management.MalformedObjectNameException;
+import javax.management.NotCompliantMBeanException;
+import javax.management.ObjectName;
+import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.HelpFormatter;
@@ -74,28 +98,112 @@ import org.apache.thrift.transport.TServerSocket;
 import org.apache.thrift.transport.TServerTransport;
 import org.apache.thrift.transport.TTransportFactory;
 
-import java.io.IOException;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.TreeMap;
-
 /**
  * ThriftServer - this class starts up a Thrift server which implements the
  * Hbase API specified in the Hbase.thrift IDL file.
  */
 public class ThriftServer {
+  public interface HBaseHandlerMBean {
+    public int getQueueSize();
+
+    public int getFailQueueSize();
+
+    public void setFailQueueSize(int newSize);
+
+    public int getScannerMapSize();
+
+    public int getNextScannerId();
+
+    public long getPoolCompletedTaskCount();
+
+    public long getPoolTaskCount();
+
+    public int getPoolLargestPoolSize();
+
+    public int getCorePoolSize();
+
+    public void setCorePoolSize(int newCoreSize);
+
+    public int getMaxPoolSize();
+
+    public void setMaxPoolSize(int newMaxSize);
+
+    public long getFailedIncrements();
+  }
+
 
   /**
    * The HBaseHandler is a glue object that connects Thrift RPC calls to the
    * HBase client API primarily defined in the HBaseAdmin and HTable objects.
    */
-  public static class HBaseHandler implements Hbase.Iface {
+  public static class HBaseHandler implements Hbase.Iface, HBaseHandlerMBean {
+    // MBean get/set methods
+    public int getQueueSize() {
+      return pool.getQueue().size();
+    }
+    public int getFailQueueSize() {
+      return this.failQueueSize;
+    }
+    public void setFailQueueSize(int newSize) {
+      this.failQueueSize = newSize;
+    }
+    public int getScannerMapSize() {
+      return scannerMap.size();
+    }
+    public int getNextScannerId() {
+      return nextScannerId;
+    }
+    public long getPoolCompletedTaskCount() {
+      return pool.getCompletedTaskCount();
+    }
+    public long getPoolTaskCount() {
+      return pool.getTaskCount();
+    }
+    public int getPoolLargestPoolSize() {
+      return pool.getLargestPoolSize();
+    }
+    public int getCorePoolSize() {
+      return pool.getCorePoolSize();
+    }
+    public void setCorePoolSize(int newCoreSize) {
+      pool.setCorePoolSize(newCoreSize);
+    }
+    public int getMaxPoolSize() {
+      return pool.getMaximumPoolSize();
+    }
+    public void setMaxPoolSize(int newMaxSize) {
+      pool.setMaximumPoolSize(newMaxSize);
+    }
+    public long getFailedIncrements() {
+      return failedIncrements;
+    }
+
+    static class DaemonThreadFactory implements ThreadFactory {
+      static final AtomicInteger poolNumber = new AtomicInteger(1);
+      final ThreadGroup group;
+      final AtomicInteger threadNumber = new AtomicInteger(1);
+      final String namePrefix;
+
+      DaemonThreadFactory() {
+        SecurityManager s = System.getSecurityManager();
+        group = (s != null)? s.getThreadGroup() :
+            Thread.currentThread().getThreadGroup();
+        namePrefix = "ICV-" +
+            poolNumber.getAndIncrement() +
+            "-thread-";
+      }
+
+      public Thread newThread(Runnable r) {
+        Thread t = new Thread(group, r,
+            namePrefix + threadNumber.getAndIncrement(),
+            0);
+        if (!t.isDaemon())
+          t.setDaemon(true);
+        if (t.getPriority() != Thread.NORM_PRIORITY)
+          t.setPriority(Thread.NORM_PRIORITY);
+        return t;
+      }
+    }
     protected Configuration conf;
     protected HBaseAdmin admin = null;
     protected final Log LOG = LogFactory.getLog(this.getClass().getName());
@@ -111,6 +219,52 @@ public class ThriftServer {
       }
 
     };
+    private final ThreadPoolExecutor pool;
+
+    private int failQueueSize = 1000;
+    private static final int CORE_POOL_SIZE = 10;
+    private static final int MAX_POOL_SIZE = 20;
+
+    private volatile long failedIncrements = 0;
+
+
+    /**
+     * Constructs an HBaseHandler object.
+     *
+     * @throws MasterNotRunningException
+     */
+    HBaseHandler() throws MasterNotRunningException {
+      conf = new HBaseConfiguration();
+      // be way more aggressive about time outs.
+      conf.setInt("hbase.client.retries.number", 4);
+      admin = new HBaseAdmin(conf);
+      scannerMap = new HashMap<Integer, ResultScanner>();
+
+      LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>();
+      pool = new ThreadPoolExecutor(CORE_POOL_SIZE, MAX_POOL_SIZE,
+          60, TimeUnit.SECONDS,
+          queue,
+          new DaemonThreadFactory());
+
+      try {
+        final MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+
+        ObjectName name = new ObjectName("hbase:" +
+        "service=Thrift,name=" + Thread.currentThread().getName());
+
+        mbs.registerMBean(this, name);
+
+      } catch (MalformedObjectNameException e) {
+        LOG.warn("JMX init failed, sorry :-(", e);
+      } catch (NotCompliantMBeanException e) {
+        LOG.warn("JMX init failed", e);
+      } catch (InstanceAlreadyExistsException e) {
+        LOG.warn("JMX init failed", e);
+      } catch (MBeanRegistrationException e) {
+        LOG.warn("JMX init failed", e);
+      }
+    }
+
     /**
      * Returns a list of all the column families for a given htable.
      *
@@ -179,19 +333,6 @@ public class ThriftServer {
      */
     protected synchronized ResultScanner removeScanner(int id) {
       return scannerMap.remove(id);
-    }
-
-    /**
-     * Constructs an HBaseHandler object.
-     *
-     * @throws MasterNotRunningException
-     */
-    HBaseHandler() throws MasterNotRunningException {
-      conf = HBaseConfiguration.create();
-      // be way more aggressive about time outs.
-      conf.setInt("hbase.client.retries.number", 4);
-      admin = new HBaseAdmin(conf);
-      scannerMap = new HashMap<Integer, ResultScanner>();
     }
 
     public void enableTable(final byte[] tableName) throws IOError {
@@ -598,6 +739,53 @@ public class ThriftServer {
           + incr.getAmount());
         }
       }
+    }
+
+    public boolean queueIncrementColumnValues(List<Increment> increments) throws TException {
+      if (pool.getQueue().size() > failQueueSize) {
+        ++ failedIncrements;
+        return false;
+      }
+
+      // queue it up
+      Callable<Integer> callable = createIncCallable(increments);
+      pool.submit(callable);
+
+      return true;
+    }
+
+    private Callable<Integer> createIncCallable(final List<Increment> incrs) {
+      return new Callable<Integer>() {
+        @Override
+        public Integer call() throws Exception {
+          int failures = 0;
+          for (Increment incr : incrs) {
+            try {
+              HTable table = getTable(incr.getTable());
+              byte [][]famAndQf = KeyValue.parseColumn(incr.getColumn());
+              if (famAndQf.length != 2)
+                throw new IOException("Bad column: " + Bytes.toString(incr.getColumn()));
+              if (failures > 2) {
+                throw new IOException("Auto-Fail rest of ICVs");
+              }
+              table.incrementColumnValue(
+                  incr.getRow(),
+                  famAndQf[0],
+                  famAndQf[1],
+                  incr.getAmount());
+            } catch (IOException e) {
+              // log failure of increment
+              failures++;
+              LOG.error("FAILED_ICV: "
+                  + Bytes.toString(incr.getTable()) + ", "
+                  + Bytes.toStringBinary(incr.getRow()) + ", "
+                  + Bytes.toStringBinary(incr.getColumn()) + ", "
+                  + incr.getAmount());
+            }
+          }
+          return failures;
+        }
+      };
     }
 
     public long atomicIncrement(byte [] tableName, byte [] row, byte [] family,
