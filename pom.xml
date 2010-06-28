@@ -167,6 +167,21 @@
         <enabled>true</enabled>
       </releases>
     </repository>
+    <repository>
+      <id>ibiblio.org</id>
+      <name>ibiblio mirror</name>
+      <url>http://mirrors.ibiblio.org/pub/mirrors/maven2/</url>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+    </repository>
+    <repository>
+      <id>powermock-repo</id>
+      <url>http://powermock.googlecode.com/svn/repo/</url>
+   </repository>
   </repositories>
 
   <build>
@@ -468,6 +483,7 @@
     <stax-api.version>1.0.1</stax-api.version>
     <thrift.version>0.2.0</thrift.version><!-- newer version available -->
     <zookeeper.version>3.3.2</zookeeper.version>
+    <powermock.version>1.4</powermock.version>
 
     <!-- For flaky tests exclusion -->
     <test.exclude />
@@ -747,6 +763,18 @@
       <artifactId>hadoop-test</artifactId>
       <version>${hadoop.version}</version>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+       <groupId>org.powermock.modules</groupId>
+       <artifactId>powermock-module-junit4</artifactId>
+       <version>${powermock.version}</version>
+       <scope>test</scope>
+    </dependency>
+    <dependency>
+       <groupId>org.powermock.api</groupId>
+       <artifactId>powermock-api-mockito</artifactId>
+       <version>${powermock.version}</version>
+       <scope>test</scope>
     </dependency>
   </dependencies>
 
