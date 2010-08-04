@@ -221,9 +221,8 @@ public class ThriftServer {
     };
     private final ThreadPoolExecutor pool;
 
-    private int failQueueSize = 1000;
-    private static final int CORE_POOL_SIZE = 10;
-    private static final int MAX_POOL_SIZE = 20;
+    private int failQueueSize = 2000;
+    private static final int CORE_POOL_SIZE = 35;
 
     private volatile long failedIncrements = 0;
 
@@ -241,7 +240,7 @@ public class ThriftServer {
       scannerMap = new HashMap<Integer, ResultScanner>();
 
       LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>();
-      pool = new ThreadPoolExecutor(CORE_POOL_SIZE, MAX_POOL_SIZE,
+      pool = new ThreadPoolExecutor(CORE_POOL_SIZE, CORE_POOL_SIZE,
           60, TimeUnit.SECONDS,
           queue,
           new DaemonThreadFactory());
