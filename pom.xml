@@ -182,6 +182,10 @@
       <id>powermock-repo</id>
       <url>http://powermock.googlecode.com/svn/repo/</url>
    </repository>
+   <repository>
+      <id>Cloudera</id>
+      <url>https://repository.cloudera.com/content/repositories/releases/</url>
+   </repository>
   </repositories>
 
   <build>
@@ -467,7 +471,7 @@
     at revision 1034499 with this hdfs-895 patch:
     https://issues.apache.org/jira/secure/attachment/12459473/hdfs-895-branch-20-append.txt
     -->
-    <hadoop.version>0.20-append-r1056497</hadoop.version>
+    <hadoop.version>0.20.2-320</hadoop.version>
     <jasper.version>5.5.23</jasper.version>
     <jaxb-api.version>2.1</jaxb-api.version>
     <jetty.version>6.1.26</jetty.version>
@@ -556,7 +560,7 @@
       </exclusions>
     </dependency>
     <dependency>
-      <groupId>org.apache.hadoop</groupId>
+      <groupId>com.cloudera.hadoop</groupId>
       <artifactId>hadoop-core</artifactId>
       <version>${hadoop.version}</version>
       <exclusions>
@@ -758,8 +762,8 @@
       <version>${commons-math.version}</version>
       <scope>test</scope>
     </dependency>
-    <dependency>
-      <groupId>org.apache.hadoop</groupId>
+     <dependency>
+      <groupId>com.cloudera.hadoop</groupId>
       <artifactId>hadoop-test</artifactId>
       <version>${hadoop.version}</version>
       <scope>test</scope>
