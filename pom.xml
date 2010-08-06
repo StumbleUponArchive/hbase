@@ -211,6 +211,10 @@
       <id>powermock-repo</id>
       <url>http://powermock.googlecode.com/svn/repo/</url>
    </repository>
+   <repository>
+      <id>Cloudera</id>
+      <url>https://repository.cloudera.com/content/repositories/releases/</url>
+   </repository>
   </repositories>
 
 
@@ -480,8 +484,8 @@
   <properties>
     <compileSource>1.6</compileSource>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <hbase.version>0.89.0-SNAPSHOT</hbase.version>
-    <hadoop.version>0.20.3-append-r964955-1240</hadoop.version>
+    <hbase.version>0.89.20100726</hbase.version>
+    <hadoop.version>0.20.2-320</hadoop.version>
 
     <commons-cli.version>1.2</commons-cli.version>
     <commons-logging.version>1.1.1</commons-logging.version>
@@ -547,7 +551,7 @@
       </dependency>
 
       <dependency>
-        <groupId>org.apache.hadoop</groupId>
+        <groupId>com.cloudera.hadoop</groupId>
         <artifactId>hadoop-core</artifactId>
         <version>${hadoop.version}</version>
       </dependency>
@@ -577,7 +581,7 @@
 
       <!-- Test dependencies -->
       <dependency>
-        <groupId>org.apache.hadoop</groupId>
+        <groupId>com.cloudera.hadoop</groupId>
         <artifactId>hadoop-test</artifactId>
         <version>${hadoop.version}</version>
         <scope>test</scope>
@@ -649,7 +653,7 @@
     </dependency>
 
     <dependency>
-      <groupId>org.apache.hadoop</groupId>
+      <groupId>com.cloudera.hadoop</groupId>
       <artifactId>hadoop-core</artifactId>
     </dependency>
 
@@ -790,7 +794,7 @@
       <scope>test</scope>
     </dependency>
      <dependency>
-      <groupId>org.apache.hadoop</groupId>
+      <groupId>com.cloudera.hadoop</groupId>
       <artifactId>hadoop-test</artifactId>
     </dependency>
      <dependency>
