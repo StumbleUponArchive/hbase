@@ -51,7 +51,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p/>
  * <pre>
  * replication/
- *  master     {contains a full cluster address}
  *  state      {contains true or false}
  *  clusterId  {contains a byte}
  *  peers/
@@ -78,8 +77,8 @@ public class ReplicationZookeeperWrapper {
   private final static String RS_LOCK_ZNODE = "lock";
   // Our handle on zookeeper
   private final ZooKeeperWrapper zookeeperWrapper;
-  // Map of addresses of peer clusters with their ZKW
-  private final Map<String, ZooKeeperWrapper> peerClusters;
+  // Map of peer clusters keyed by their id
+  private final Map<String, ReplicationPeer> peerClusters;
   // Path to the root replication znode
   private final String replicationZNode;
   // Path to the peer clusters znode
@@ -90,13 +89,27 @@ public class ReplicationZookeeperWrapper {
   private final String rsServerNameZnode;
   // Name node if the replicationState znode
   private final String replicationStateNodeName;
-  // If this RS is part of a master cluster
-  private final boolean replicationMaster;
   private final Configuration conf;
   // Is this cluster replicating at the moment?
   private final AtomicBoolean replicating;
   // Byte (stored as string here) that identifies this cluster
   private final String clusterId;
+  // The key to our own cluster
+  private final String ourClusterKey;
+  // Way to know if this class needs to process the added features
+  // required for the region servers, or just act a as replication client
+  private final boolean clientOnly;
+
+  /**
+   * Constructor used by clients of replication (like master and HBase clients)
+   * @param zookeeperWrapper zkw to wrap
+   * @param conf             conf to use
+   * @throws IOException
+   */
+  public ReplicationZookeeperWrapper(ZooKeeperWrapper zookeeperWrapper,
+                                     Configuration conf) throws IOException {
+    this(zookeeperWrapper, conf, new AtomicBoolean(true), null);
+  }
 
   /**
    * Constructor used by region servers, connects to the peer cluster right away.
@@ -113,6 +126,7 @@ public class ReplicationZookeeperWrapper {
       final AtomicBoolean replicating, String rsName) throws IOException {
     this.zookeeperWrapper = zookeeperWrapper;
     this.conf = conf;
+    this.clientOnly = rsName == null;
     String replicationZNodeName =
         conf.get("zookeeper.znode.replication", "replication");
     String peersZNodeName =
@@ -125,47 +139,53 @@ public class ReplicationZookeeperWrapper {
         conf.get("zookeeper.znode.replication.clusterId", "clusterId");
     String rsZNodeName =
         conf.get("zookeeper.znode.replication.rs", "rs");
-    String thisCluster = this.conf.get(HConstants.ZOOKEEPER_QUORUM) + ":" +
+    this.ourClusterKey = this.conf.get(HConstants.ZOOKEEPER_QUORUM) + ":" +
           this.conf.get("hbase.zookeeper.property.clientPort") + ":" +
           this.conf.get(HConstants.ZOOKEEPER_ZNODE_PARENT);
 
-    this.peerClusters = new HashMap<String, ZooKeeperWrapper>();
+    this.peerClusters = new HashMap<String, ReplicationPeer>();
     this.replicationZNode = zookeeperWrapper.getZNode(
         zookeeperWrapper.getParentZNode(), replicationZNodeName);
     this.peersZNode =
         zookeeperWrapper.getZNode(replicationZNode, peersZNodeName);
+    this.zookeeperWrapper.ensureExists(this.peersZNode);
     this.rsZNode =
         zookeeperWrapper.getZNode(replicationZNode, rsZNodeName);
 
     this.replicating = replicating;
-    setReplicating();
+    readReplicationStateZnode();
     String idResult = Bytes.toString(
         this.zookeeperWrapper.getData(this.replicationZNode,
         clusterIdZNodeName));
     this.clusterId =
         idResult == null ?
             Byte.toString(HConstants.DEFAULT_CLUSTER_ID) : idResult;
-    String address = Bytes.toString(
-        this.zookeeperWrapper.getData(this.replicationZNode,
-          repMasterZNodeName));
-    this.replicationMaster = thisCluster.equals(address);
-    LOG.info("This cluster (" + thisCluster + ") is a "
-          + (this.replicationMaster ? "master" : "slave") + " for replication" +
-          ", compared with (" + address + ")");
-    if (rsName != null) {
+    if (this.clientOnly) {
+      this.rsServerNameZnode = null;
+    } else {
       this.rsServerNameZnode =
           this.zookeeperWrapper.getZNode(rsZNode, rsName);
-      List<String> znodes = this.zookeeperWrapper.listZnodes(this.peersZNode,
-          new ReplicationStatusWatcher());
-      if (znodes != null) {
-        for (String znode : znodes) {
-          connectToPeer(znode);
-        }
-      }
-    } else {
-      this.rsServerNameZnode = null;
+      connectExistingPeers();
     }
+  }
 
+  private void connectExistingPeers() throws IOException {
+    List<String> znodes = listPeersIds(null);
+    if (znodes != null) {
+      for (String znode : znodes) {
+        if (!this.peerClusters.containsKey(znode))
+          connectToPeer(znode);
+      }
+    }
+  }
+
+  /**
+   *
+   * @param watcher
+   * @return
+   */
+  public List<String> listPeersIds(Watcher watcher) {
+    return this.zookeeperWrapper.listZnodes(this.peersZNode, watcher);
   }
 
   /**
@@ -174,13 +194,20 @@ public class ReplicationZookeeperWrapper {
    * @param peerClusterId (byte) the cluster to interrogate
    * @return addresses of all region servers
    */
-  public List<HServerAddress> getPeersAddresses(String peerClusterId) {
+  public List<HServerAddress> getSlavesAddresses(String peerClusterId) {
     if (this.peerClusters.size() == 0) {
       return new ArrayList<HServerAddress>(0);
     }
-    ZooKeeperWrapper zkw = this.peerClusters.get(peerClusterId);
-    return zkw == null?
-        new ArrayList<HServerAddress>(0) : zkw.scanRSDirectory();
+    ReplicationPeer peer = this.peerClusters.get(peerClusterId);
+    if (peer == null) {
+      return new ArrayList<HServerAddress>(0);
+    }
+    peer.setRegionServers(fetchSlavesAddresses(peer.getZkw()));
+    return peer.getRegionServers();
+  }
+
+  private List<HServerAddress> fetchSlavesAddresses(ZooKeeperWrapper zkw) {
+    return zkw.scanRSDirectory();
   }
 
   /**
@@ -188,31 +215,126 @@ public class ReplicationZookeeperWrapper {
    * in this region server's replication znode
    * @param peerId id of the peer cluster
    */
-  private void connectToPeer(String peerId) throws IOException {
-    String[] ensemble =
-        Bytes.toString(this.zookeeperWrapper.getData(this.peersZNode, peerId)).
-            split(":");
-    if (ensemble.length != 3) {
-      throw new IllegalArgumentException("Wrong format of cluster address: " +
-          this.zookeeperWrapper.getData(this.peersZNode, peerId));
+  public boolean connectToPeer(String peerId) throws IOException {
+    if (this.clientOnly) {
+      return false;
     }
+    if (this.peerClusters.containsKey(peerId)) {
+      return false;
+      // TODO remove when we support it
+    } else if (this.peerClusters.size() > 0) {
+      LOG.warn("Multiple slaves feature not supported");
+      return false;
+    }
+    String otherClusterKey = Bytes.toString(this.zookeeperWrapper.getData(
+        this.peersZNode, peerId));
+    if (this.ourClusterKey.equals(otherClusterKey)) {
+      LOG.debug("Not connecting to " + peerId + " because it's us");
+      return false;
+    }
+    String[] ensemble = otherClusterKey.split(":");
+    if (ensemble.length != 3) {
+     LOG.warn("Wrong format of cluster address: " +
+          this.zookeeperWrapper.getData(this.peersZNode, peerId));
+      return false;
+    }
+    // Construct the connection to the new peer
     Configuration otherConf = new Configuration(this.conf);
     otherConf.set(HConstants.ZOOKEEPER_QUORUM, ensemble[0]);
     otherConf.set("hbase.zookeeper.property.clientPort", ensemble[1]);
     otherConf.set(HConstants.ZOOKEEPER_ZNODE_PARENT, ensemble[2]);
     ZooKeeperWrapper zkw = ZooKeeperWrapper.createInstance(otherConf,
         "connection to cluster: " + peerId);
-    zkw.registerListener(new ReplicationStatusWatcher());
-    this.peerClusters.put(peerId, zkw);
+    ReplicationPeer peer = new ReplicationPeer(peerId, otherClusterKey, zkw);
+    this.peerClusters.put(peerId, peer);
     this.zookeeperWrapper.ensureExists(this.zookeeperWrapper.getZNode(
         this.rsServerNameZnode, peerId));
     LOG.info("Added new peer cluster " + StringUtils.arrayToString(ensemble));
+    return true;
+  }
+
+  /**
+   * Set the new replication state for this cluster
+   * @param newState
+   */
+  public void setReplicating(boolean newState) {
+    try {
+      this.zookeeperWrapper.writeZNode(this.replicationZNode,
+          this.replicationStateNodeName, Boolean.toString(newState));
+    } catch (InterruptedException e) {
+      LOG.error(e);
+    } catch (KeeperException e) {
+      LOG.error(e);
+    }
+  }
+
+  public void setSourceState(String id, boolean enabled) {
+    try {
+      this.zookeeperWrapper.writeZNode(this.peersZNode, id,
+          Boolean.toString(enabled));
+    } catch (InterruptedException e) {
+      LOG.error(e);
+    } catch (KeeperException e) {
+      LOG.error(e);
+    }
+  }
+
+  /**
+   *
+   * @param id
+   * @throws IllegalArgumentException Thrown when the peer doesn't exist
+   */
+  public void removePeer(String id) {
+    try {
+      if (!peerExists(id)) {
+        throw new IllegalArgumentException("Cannot remove inexisting peer");
+      }
+      this.zookeeperWrapper.deleteZNode(
+          zookeeperWrapper.getZNode(this.peersZNode, id), true);
+    } catch (InterruptedException e) {
+      LOG.error(e);
+    } catch (KeeperException e) {
+      LOG.error(e);
+    }
+  }
+
+  /**
+   *
+   * @param id
+   * @param clusterKey
+   * @throws IllegalArgumentException Thrown when the peer doesn't exist
+   * @throws IllegalStateException Thrown when a peer already exists, since
+   *         multi-slave isn't supported yet.
+   */
+  public void addPeer(String id, String clusterKey) {
+    try {
+      if (peerExists(id)) {
+        throw new IllegalArgumentException("Cannot add existing peer");
+      } else if (countPeers() > 0) {
+        throw new IllegalStateException("Multi-slave isn't supported yet");
+      }
+      this.zookeeperWrapper.writeZNode(this.peersZNode, id, clusterKey);
+    } catch (InterruptedException e) {
+      LOG.error(e);
+    } catch (KeeperException e) {
+      LOG.error(e);
+    }
+  }
+
+  private boolean peerExists(String id) {
+    return this.zookeeperWrapper.exists(
+          zookeeperWrapper.getZNode(this.peersZNode, id), false);
+  }
+
+  private int countPeers() {
+    List<String> peers = this.zookeeperWrapper.listZnodes(this.peersZNode);
+    return peers == null ? 0 : peers.size();
   }
 
   /**
    * This reads the state znode for replication and sets the atomic boolean
    */
-  private void setReplicating() {
+  private void readReplicationStateZnode() {
     String value = Bytes.toString(this.zookeeperWrapper.getDataAndWatch(
         this.replicationZNode, this.replicationStateNodeName,
         new ReplicationStatusWatcher()));
@@ -403,10 +525,14 @@ public class ReplicationZookeeperWrapper {
    * Delete a complete queue of hlogs
    * @param peerZnode znode of the peer cluster queue of hlogs to delete
    */
-  public void deleteSource(String peerZnode) {
+  public void deleteSource(String peerZnode, boolean closeConnection) {
     try {
       this.zookeeperWrapper.deleteZNode(
           this.zookeeperWrapper.getZNode(rsServerNameZnode, peerZnode), true);
+      if (closeConnection) {
+        this.peerClusters.get(peerZnode).getZkw().close();
+        this.peerClusters.remove(peerZnode);
+      }
     } catch (InterruptedException e) {
       LOG.error(e);
     } catch (KeeperException e) {
@@ -451,15 +577,6 @@ public class ReplicationZookeeperWrapper {
   }
 
   /**
-   * Tells if this cluster replicates or not
-   *
-   * @return if this is a master
-   */
-  public boolean isReplicationMaster() {
-    return this.replicationMaster;
-  }
-
-  /**
    * Get the identification of the cluster
    *
    * @return the id for the cluster
@@ -470,10 +587,20 @@ public class ReplicationZookeeperWrapper {
 
   /**
    * Get a map of all peer clusters
-   * @return map of peer cluster, zk address to ZKW
+   * @return map of peer cluster keyed by id
    */
-  public Map<String, ZooKeeperWrapper> getPeerClusters() {
+  public Map<String, ReplicationPeer> getPeerClusters() {
     return this.peerClusters;
+  }
+
+  /**
+   * Extracts the znode name of a peer cluster from a ZK path
+   * @param fullPath Path to extract the id from
+   * @return the id or an empty string if path is invalid
+   */
+  public static String getZNodeName(String fullPath) {
+    String[] parts = fullPath.split("/");
+    return parts.length > 0 ? parts[parts.length-1] : "";
   }
 
   /**
@@ -485,7 +612,7 @@ public class ReplicationZookeeperWrapper {
       Event.EventType type = watchedEvent.getType();
       LOG.info("Got event " + type + " with path " + watchedEvent.getPath());
       if (type.equals(Event.EventType.NodeDataChanged)) {
-        setReplicating();
+        readReplicationStateZnode();
       }
     }
   }

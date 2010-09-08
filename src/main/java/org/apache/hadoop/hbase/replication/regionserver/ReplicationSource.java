@@ -124,6 +124,9 @@ public class ReplicationSource extends Thread
   private volatile boolean running = true;
   // Metrics for this source
   private ReplicationSourceMetrics metrics;
+  // If source is enabled, replication happens. If disabled, nothing will be
+  // replicated but HLogs will still be queued
+  private AtomicBoolean sourceEnabled = new AtomicBoolean();
 
   /**
    * Instantiation method used by region servers
@@ -197,7 +200,7 @@ public class ReplicationSource extends Thread
   private void chooseSinks() {
     this.currentPeers.clear();
     List<HServerAddress> addresses =
-        this.zkHelper.getPeersAddresses(peerClusterId);
+        this.zkHelper.getSlavesAddresses(peerClusterId);
     Set<HServerAddress> setOfAddr = new HashSet<HServerAddress>();
     int nbPeers = (int) (Math.ceil(addresses.size() * ratio));
     LOG.info("Getting " + nbPeers +
@@ -236,6 +239,13 @@ public class ReplicationSource extends Thread
     int sleepMultiplier = 1;
     // Loop until we close down
     while (!stop.get() && this.running) {
+      // Sleep until replication is enabled again
+      if (!this.replicating.get() || !this.sourceEnabled.get()) {
+        if (sleepForRetries("Replication is disabled", sleepMultiplier)) {
+          sleepMultiplier++;
+        }
+        continue;
+      }
       // Get a new path
       if (!getNextPath()) {
         if (sleepForRetries("No log to process", sleepMultiplier)) {
@@ -433,6 +443,12 @@ public class ReplicationSource extends Thread
           // TODO What happens if the log was missing from every single location?
           // Although we need to check a couple of times as the log could have
           // been moved by the master between the checks
+          // It can also happen if a recovered queue wasn't properly cleaned,
+          // such that the znode pointing to a log exists but the log was
+          // deleted a long time ago.
+          // For the moment, we'll throw the IO and processEndOfFile
+          throw new IOException("File from recovered queue is " +
+              "nowhere to be found", fnfe);
         } else {
           // If the log was archived, continue reading from there
           Path archivedLogLocation =
@@ -572,7 +588,7 @@ public class ReplicationSource extends Thread
       return true;
     } else if (this.queueRecovered) {
       this.manager.closeRecoveredQueue(this);
-      this.abort();
+      this.terminate();
       return true;
     }
     return false;
@@ -584,24 +600,16 @@ public class ReplicationSource extends Thread
         new Thread.UncaughtExceptionHandler() {
           public void uncaughtException(final Thread t, final Throwable e) {
             LOG.fatal("Set stop flag in " + t.getName(), e);
-            abort();
+            terminate();
           }
         };
     Threads.setDaemonThreadRunning(
         this, n + ".replicationSource," + clusterId, handler);
   }
 
-  /**
-   * Hastily stop the replication, then wait for shutdown
-   */
-  private void abort() {
-    LOG.info("abort");
-    this.running = false;
-    terminate();
-  }
-
   public void terminate() {
-    LOG.info("terminate");
+    LOG.info("Closing source " + this.peerClusterZnode);
+    this.running = false;
     Threads.shutdown(this, this.sleepForRetries);
   }
 
@@ -645,13 +653,12 @@ public class ReplicationSource extends Thread
     return down;
   }
 
-  /**
-   * Get the id that the source is replicating to
-   *
-   * @return peer cluster id
-   */
   public String getPeerClusterZnode() {
     return this.peerClusterZnode;
+  }
+
+  public String getPeerClusterId() {
+    return this.peerClusterId;
   }
 
   /**
@@ -660,6 +667,14 @@ public class ReplicationSource extends Thread
    */
   public Path getCurrentPath() {
     return this.currentPath;
+  }
+
+  /**
+   * Set if this source is enabled or disabled
+   * @param status the new status
+   */
+  public void setSourceEnabled(boolean status) {
+    this.sourceEnabled.set(status);
   }
 
   /**

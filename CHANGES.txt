@@ -1,4 +1,11 @@
 HBase Change Log
+
+Added for StumbleUpon's 0.89 rebase
+
+   HBASE-2467  Concurrent flushers in HLog sync using HDFS-895
+   HBASE-2964  Deadlock when RS tries to RPC to itself inside SplitTransaction
+   HBASE-2201  JRuby shell for replication
+
 Release 0.21.0 - Unreleased
   INCOMPATIBLE CHANGES
    HBASE-1822  Remove the deprecated APIs

@@ -71,4 +71,5 @@ end
 # Include classes definition
 require 'hbase/hbase'
 require 'hbase/admin'
+require 'hbase/replication_admin'
 require 'hbase/table'

@@ -72,9 +72,23 @@ public interface ReplicationSourceInterface {
   public void terminate();
 
   /**
-   * Get the id that the source is replicating to
+   * Get the name of the znode that contains the metadata for the replication
+   * this source's peer.
+   *
+   * @return peer cluster znode
+   */
+  public String getPeerClusterZnode();
+
+  /**
+   * Get the id that the source is replicating to.
    *
    * @return peer cluster id
    */
-  public String getPeerClusterZnode();
+  public String getPeerClusterId();
+
+  /**
+   * Set if this source is enabled or disabled
+   * @param status the new status
+   */
+  public void setSourceEnabled(boolean status);
 }

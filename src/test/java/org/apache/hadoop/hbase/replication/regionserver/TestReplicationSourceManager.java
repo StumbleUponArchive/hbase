@@ -31,7 +31,6 @@ import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
-import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.regionserver.wal.HLog;
 import org.apache.hadoop.hbase.regionserver.wal.HLogKey;
 import org.apache.hadoop.hbase.regionserver.wal.WALEdit;
@@ -61,7 +60,7 @@ public class TestReplicationSourceManager {
 
   private static final AtomicBoolean STOPPER = new AtomicBoolean(false);
 
-  private static final AtomicBoolean REPLICATING = new AtomicBoolean(false);
+  private static final AtomicBoolean REPLICATING = new AtomicBoolean(true);
 
   private static ReplicationSourceManager manager;
 
@@ -90,27 +89,20 @@ public class TestReplicationSourceManager {
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-
     conf = HBaseConfiguration.create();
+    conf.setBoolean("dfs.support.append", true);
     conf.set("replication.replicationsource.implementation",
         ReplicationSourceDummy.class.getCanonicalName());
     conf.setBoolean(HConstants.REPLICATION_ENABLE_KEY, true);
     utility = new HBaseTestingUtility(conf);
     utility.startMiniZKCluster();
-
-    zkw = ZooKeeperWrapper.createInstance(conf, "test");
-    zkw.writeZNode("/hbase", "replication", "");
-    zkw.writeZNode("/hbase/replication", "master",
-        conf.get(HConstants.ZOOKEEPER_QUORUM)+":" +
-    conf.get("hbase.zookeeper.property.clientPort")+":/1");
+    zkw = ZooKeeperWrapper.createInstance(conf,
+        TestReplicationSourceManager.class.toString());
     zkw.writeZNode("/hbase/replication/peers", "1",
           conf.get(HConstants.ZOOKEEPER_QUORUM)+":" +
           conf.get("hbase.zookeeper.property.clientPort")+":/1");
-
-    HRegionServer server = new HRegionServer(conf);
     ReplicationZookeeperWrapper helper = new ReplicationZookeeperWrapper(
-        server.getZooKeeperWrapper(), conf,
-        REPLICATING, "123456789");
+        zkw, conf, REPLICATING, "123456789");
     fs = FileSystem.get(conf);
     oldLogDir = new Path(utility.getTestDir(),
         HConstants.HREGION_OLDLOGDIR_NAME);

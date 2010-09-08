@@ -112,8 +112,7 @@ public class ReplicationLogCleaner implements LogCleanerDelegate, Watcher {
     try {
       this.zkHelper = new ReplicationZookeeperWrapper(
           ZooKeeperWrapper.createInstance(this.conf,
-              HMaster.class.getName()),
-          this.conf, new AtomicBoolean(true), null);
+              HMaster.class.getName()), this.conf);
     } catch (IOException e) {
       LOG.error(e);
     }

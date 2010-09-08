@@ -47,7 +47,6 @@ public class Replication implements LogEntryVisitor {
 
   private final boolean replication;
   private final ReplicationSourceManager replicationManager;
-  private boolean replicationMaster;
   private final AtomicBoolean replicating = new AtomicBoolean(true);
   private final ReplicationZookeeperWrapper zkHelper;
   private final Configuration conf;
@@ -74,10 +73,8 @@ public class Replication implements LogEntryVisitor {
       this.zkHelper = new ReplicationZookeeperWrapper(
         ZooKeeperWrapper.getInstance(conf, hsi.getServerName()), conf,
         this.replicating, hsi.getServerName());
-      this.replicationMaster = zkHelper.isReplicationMaster();
-      this.replicationManager = this.replicationMaster ?
-        new ReplicationSourceManager(zkHelper, conf, stopRequested,
-          fs, this.replicating, logDir, oldLogDir) : null;
+      this.replicationManager = new ReplicationSourceManager(zkHelper, conf,
+          stopRequested, fs, this.replicating, logDir, oldLogDir);
     } else {
       replicationManager = null;
       zkHelper = null;
@@ -89,9 +86,7 @@ public class Replication implements LogEntryVisitor {
    */
   public void join() {
     if (this.replication) {
-      if (this.replicationMaster) {
-        this.replicationManager.join();
-      }
+      this.replicationManager.join();
       this.zkHelper.deleteOwnRSZNode();
     }
   }
@@ -102,7 +97,7 @@ public class Replication implements LogEntryVisitor {
    * @throws IOException
    */
   public void replicateLogEntries(HLog.Entry[] entries) throws IOException {
-    if (this.replication && !this.replicationMaster) {
+    if (this.replication) {
       this.replicationSink.replicateEntries(entries);
     }
   }
@@ -114,12 +109,9 @@ public class Replication implements LogEntryVisitor {
    */
   public void startReplicationServices() throws IOException {
     if (this.replication) {
-      if (this.replicationMaster) {
-        this.replicationManager.init();
-      } else {
-        this.replicationSink =
-            new ReplicationSink(this.conf, this.stopRequested);
-      }
+      this.replicationManager.init();
+      this.replicationSink =
+          new ReplicationSink(this.conf, this.stopRequested);
     }
   }
 
