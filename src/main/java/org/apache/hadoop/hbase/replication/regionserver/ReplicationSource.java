@@ -417,7 +417,7 @@ public class ReplicationSource extends Thread
    */
   protected boolean openReader(int sleepMultiplier) {
     try {
-      LOG.info("Opening log for replication " + this.currentPath.getName() +
+      LOG.debug("Opening log for replication " + this.currentPath.getName() +
           " at " + this.position);
       try {
        this.reader = null;

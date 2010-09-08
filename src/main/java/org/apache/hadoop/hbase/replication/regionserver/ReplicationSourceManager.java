@@ -352,7 +352,6 @@ public class ReplicationSourceManager implements LogActionsListener {
         + nbDeletedRecovQueues);
     // Now look for the one on this cluster
     for (ReplicationSourceInterface src : this.sources) {
-      LOG.info("There is " + src.getPeerClusterZnode());
       if (id.equals(src.getPeerClusterId())) {
         srcToRemove = src;
         break;
