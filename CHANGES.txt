@@ -6,6 +6,8 @@ Added for StumbleUpon's 0.89 rebase
    HBASE-2964  Deadlock when RS tries to RPC to itself inside SplitTransaction
    HBASE-2201  JRuby shell for replication
    HBASE-2967  Failed split: IOE 'File is Corrupt!' -- sync length not being written out to SequenceFile
+   HBASE-2975  DFSClient names in master and RS should be unique
+   !!! Removed the ZooKeeper-based assignment
 
 Release 0.21.0 - Unreleased
   INCOMPATIBLE CHANGES

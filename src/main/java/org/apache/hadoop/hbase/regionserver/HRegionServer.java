@@ -733,7 +733,8 @@ public class HRegionServer implements HRegionInterface,
       // config param for task trackers, but we can piggyback off of it.
       if (this.conf.get("mapred.task.id") == null) {
         this.conf.set("mapred.task.id", 
-            "hb_rs_" + this.serverInfo.getServerName());
+            "hb_rs_" + this.serverInfo.getServerName() + "_" +
+            System.currentTimeMillis());
       }
       
       // Master sent us hbase.rootdir to use. Should be fully qualified
@@ -1258,7 +1259,14 @@ public class HRegionServer implements HRegionInterface,
         if (LOG.isDebugEnabled())
           LOG.debug("sending initial server load: " + hsl);
         lastMsg = System.currentTimeMillis();
-        zooKeeperWrapper.writeRSLocation(this.serverInfo);
+        boolean startCodeOk = false;
+        while(!startCodeOk) {
+          this.serverInfo = createServerInfoWithNewStartCode(this.serverInfo);
+          startCodeOk = zooKeeperWrapper.writeRSLocation(this.serverInfo);
+          if(!startCodeOk) {
+           LOG.debug("Start code already taken, trying another one");
+          }
+        }
         result = this.hbaseMaster.regionServerStartup(this.serverInfo);
         break;
       } catch (IOException e) {
@@ -1267,6 +1275,26 @@ public class HRegionServer implements HRegionInterface,
       sleeper.sleep(lastMsg);
     }
     return result;
+  }
+
+  private HServerInfo createServerInfoWithNewStartCode(final HServerInfo hsi) {
+    return new HServerInfo(hsi.getServerAddress(), hsi.getInfoPort(),
+      hsi.getHostname());
+  }
+
+  /* Add to the outbound message buffer */
+  private void reportOpen(HRegionInfo region) {
+    this.outboundMsgs.add(new HMsg(HMsg.Type.MSG_REPORT_OPEN, region));
+  }
+
+  /* Add to the outbound message buffer */
+  private void reportClose(HRegionInfo region) {
+    reportClose(region, null);
+  }
+
+  /* Add to the outbound message buffer */
+  private void reportClose(final HRegionInfo region, final byte[] message) {
+    this.outboundMsgs.add(new HMsg(HMsg.Type.MSG_REPORT_CLOSE, region, message));
   }
 
   /**
@@ -1433,12 +1461,8 @@ public class HRegionServer implements HRegionInterface,
   void openRegion(final HRegionInfo regionInfo) {
     Integer mapKey = Bytes.mapKey(regionInfo.getRegionName());
     HRegion region = this.onlineRegions.get(mapKey);
-    RSZookeeperUpdater zkUpdater = 
-      new RSZookeeperUpdater(conf, serverInfo.getServerName(),
-          regionInfo.getEncodedName());
     if (region == null) {
       try {
-        zkUpdater.startRegionOpenEvent(null, true);
         region = instantiateRegion(regionInfo, this.hlog);
         // Startup a compaction early if one is needed, if region has references
         // or if a store has too many store files
@@ -1453,25 +1477,12 @@ public class HRegionServer implements HRegionInterface,
         // TODO: add an extra field in HRegionInfo to indicate that there is
         // an error. We can't do that now because that would be an incompatible
         // change that would require a migration
-        try {
-          HMsg hmsg = new HMsg(HMsg.Type.MSG_REPORT_CLOSE, 
-                               regionInfo, 
-                               StringUtils.stringifyException(t).getBytes());
-          zkUpdater.abortOpenRegion(hmsg);
-        } catch (IOException e1) {
-          // TODO: Can we recover? Should be throw RTE?
-          LOG.error("Failed to abort open region " + regionInfo.getRegionNameAsString(), e1);
-        }
+        reportClose(regionInfo, StringUtils.stringifyException(t).getBytes());
         return;
       }
       addToOnlineRegions(region);
     }
-    try {
-      HMsg hmsg = new HMsg(HMsg.Type.MSG_REPORT_OPEN, regionInfo);
-      zkUpdater.finishRegionOpenEvent(hmsg);
-    } catch (IOException e) {
-      LOG.error("Failed to mark region " + regionInfo.getRegionNameAsString() + " as opened", e);
-    }
+    reportOpen(regionInfo);
   }
 
   /*
@@ -1510,20 +1521,11 @@ public class HRegionServer implements HRegionInterface,
 
   protected void closeRegion(final HRegionInfo hri, final boolean reportWhenCompleted)
   throws IOException {
-    RSZookeeperUpdater zkUpdater = null;
-    if(reportWhenCompleted) {
-      zkUpdater = new RSZookeeperUpdater(conf,
-          serverInfo.getServerName(), hri.getEncodedName());
-      zkUpdater.startRegionCloseEvent(null, false);
-    }
     HRegion region = this.removeFromOnlineRegions(hri);
     if (region != null) {
       region.close();
       if(reportWhenCompleted) {
-        if(zkUpdater != null) {
-          HMsg hmsg = new HMsg(HMsg.Type.MSG_REPORT_CLOSE, hri, null);
-          zkUpdater.finishRegionCloseEvent(hmsg);
-        }
+        reportClose(hri);
       }
     }
   }

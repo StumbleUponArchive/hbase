@@ -383,7 +383,7 @@ public class ReplicationSource extends Thread
 
   private void connectToPeers() {
     // Connect to peer cluster first, unless we have to stop
-    while (!this.stop.get() && this.currentPeers.size() == 0) {
+    while (!this.stop.get() && this.currentPeers.size() == 0 && running) {
       try {
         chooseSinks();
         Thread.sleep(this.sleepForRetries);

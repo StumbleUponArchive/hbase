@@ -72,8 +72,6 @@ import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.client.ServerConnection;
 import org.apache.hadoop.hbase.client.ServerConnectionManager;
 import org.apache.hadoop.hbase.client.MetaScanner.MetaScannerVisitor;
-import org.apache.hadoop.hbase.executor.HBaseExecutorService;
-import org.apache.hadoop.hbase.executor.HBaseEventHandler.HBaseEventType;
 import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
 import org.apache.hadoop.hbase.ipc.HBaseRPC;
 import org.apache.hadoop.hbase.ipc.HBaseRPCProtocolVersion;
@@ -201,7 +199,8 @@ public class HMaster extends Thread implements HMasterInterface,
     // hack! Maps DFSClient => Master for logs.  HDFS made this 
     // config param for task trackers, but we can piggyback off of it.
     if (this.conf.get("mapred.task.id") == null) {
-      this.conf.set("mapred.task.id", "hb_m_" + this.address.toString());
+      this.conf.set("mapred.task.id", "hb_m_" + this.address.toString() +
+        "_" + System.currentTimeMillis());
     }
 
     // Set filesystem to be that of this.rootdir else we get complaints about
@@ -251,18 +250,6 @@ public class HMaster extends Thread implements HMasterInterface,
       new RegionServerOperationQueue(this.conf, this.closed);
 
     serverManager = new ServerManager(this);
-
-    
-    // Start the unassigned watcher - which will create the unassigned region 
-    // in ZK. This is needed before RegionManager() constructor tries to assign 
-    // the root region.
-    ZKUnassignedWatcher.start(this.conf, this);
-    // start the "close region" executor service
-    HBaseEventType.RS2ZK_REGION_CLOSED.startMasterExecutorService(address.toString());
-    // start the "open region" executor service
-    HBaseEventType.RS2ZK_REGION_OPENED.startMasterExecutorService(address.toString());
-
-    
     // start the region manager
     regionManager = new RegionManager(this);
 
@@ -564,7 +551,6 @@ public class HMaster extends Thread implements HMasterInterface,
     this.rpcServer.stop();
     this.regionManager.stop();
     this.zooKeeperWrapper.close();
-    HBaseExecutorService.shutdown();
     LOG.info("HMaster main thread exiting");
   }
 

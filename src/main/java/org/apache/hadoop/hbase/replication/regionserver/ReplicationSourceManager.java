@@ -306,6 +306,11 @@ public class ReplicationSourceManager implements LogActionsListener {
       try {
         ReplicationSourceInterface src = getReplicationSource(this.conf,
             this.fs, this, this.stopper, this.replicating, peerId);
+        if (!zkHelper.getPeerClusters().containsKey(src.getPeerClusterId())) {
+          LOG.warn("Recovered queue doesn't belong to any current peer, closing");
+          src.terminate();
+          break;
+        }
         this.oldsources.add(src);
         for (String hlog : entry.getValue()) {
           src.enqueueLog(new Path(this.oldLogDir, hlog));
@@ -340,16 +345,19 @@ public class ReplicationSourceManager implements LogActionsListener {
         + sources.size() + " and another "
         + oldsources.size() + " that were recovered");
     ReplicationSourceInterface srcToRemove = null;
-    int nbDeletedRecovQueues = 0;
+    List<ReplicationSourceInterface> oldSourcesToDelete =
+        new ArrayList<ReplicationSourceInterface>();
     // First close all the recovered sources for this peer
     for (ReplicationSourceInterface src : oldsources) {
       if (id.equals(src.getPeerClusterId())) {
-        closeRecoveredQueue((src));
-        nbDeletedRecovQueues++;
+        oldSourcesToDelete.add(src);
       }
     }
+    for (ReplicationSourceInterface src : oldSourcesToDelete) {
+      closeRecoveredQueue((src));
+    }
     LOG.info("Number of deleted recovered sources for " + id + ": "
-        + nbDeletedRecovQueues);
+        + oldSourcesToDelete.size());
     // Now look for the one on this cluster
     for (ReplicationSourceInterface src : this.sources) {
       if (id.equals(src.getPeerClusterId())) {
