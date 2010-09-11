@@ -565,7 +565,7 @@ public class ReplicationSource extends Thread
                 chooseSinks();
               }
             }
-          } while (!stop.get() && down);
+          } while (!stop.get() && down && running);
         } catch (InterruptedException e) {
           LOG.debug("Interrupted while trying to contact the peer cluster");
         }

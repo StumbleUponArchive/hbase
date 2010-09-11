@@ -34,6 +34,7 @@ import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.io.hfile.Compression;
 import org.apache.hadoop.hbase.regionserver.HRegion;
 import org.apache.hadoop.hbase.regionserver.InternalScanner;
 import org.apache.hadoop.hbase.regionserver.Store;
@@ -356,6 +357,35 @@ public class MetaUtils {
     }
   }
 
+  public void setVersionReplicationCompression(final byte [] tableName)
+  throws IOException {
+    List<HRegionInfo> metas = getMETARows(tableName);
+    for (HRegionInfo hri: metas) {
+      final HRegion m = getMetaRegion(hri);
+      scanMetaRegion(m, new ScannerListener() {
+        private boolean inTable = true;
+
+        @SuppressWarnings("synthetic-access")
+        public boolean processRow(HRegionInfo info) throws IOException {
+          LOG.debug("Testing " + Bytes.toString(tableName) + " against " +
+            Bytes.toString(info.getTableDesc().getName()));
+          if (Bytes.equals(info.getTableDesc().getName(), tableName)) {
+            this.inTable = false;
+            HColumnDescriptor fam = info.getTableDesc().getColumnFamilies()[0];
+            fam.setMaxVersions(1);
+            fam.setCompressionType(Compression.Algorithm.LZO);
+            fam.setScope(1);
+            updateMETARegionInfo(m, info);
+            return true;
+          }
+          // If we got here and we have not yet encountered the table yet,
+          // inTable will be false.  Otherwise, we've passed out the table.
+          // Stop the scanner.
+          return this.inTable;
+        }});
+    }
+  }
+
   /**
    * Offline version of the online TableOperation,
    * org.apache.hadoop.hbase.master.DeleteColumn.
@@ -484,5 +514,11 @@ public class MetaUtils {
   public static boolean isMetaTableName(final byte [] n) {
     return Bytes.equals(n, HConstants.ROOT_TABLE_NAME) ||
       Bytes.equals(n, HConstants.META_TABLE_NAME);
+  }
+
+  public static void main(String[] args) throws Exception {
+    MetaUtils utils = new MetaUtils(HBaseConfiguration.create());
+    utils.setVersionReplicationCompression(Bytes.toBytes(args[0]));
+    utils.shutdown();
   }
 }
