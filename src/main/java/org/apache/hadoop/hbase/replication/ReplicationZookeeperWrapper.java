@@ -451,10 +451,14 @@ public class ReplicationZookeeperWrapper {
    */
   public boolean lockOtherRS(String znode) {
     try {
-      this.zookeeperWrapper.writeZNode(
-          this.zookeeperWrapper.getZNode(this.rsZNode, znode),
+      String otherRSNameZNode =
+          this.zookeeperWrapper.getZNode(this.rsZNode, znode);
+      if (otherRSNameZNode.equals(rsServerNameZnode)) {
+        LOG.warn("Won't lock because this is us, we're dead!");
+        return false;
+      }
+      this.zookeeperWrapper.writeZNode(otherRSNameZNode,
           RS_LOCK_ZNODE, rsServerNameZnode, true);
-
     } catch (InterruptedException e) {
       LOG.error(e);
       return false;

@@ -377,7 +377,7 @@ public class TestReplication {
       }
     }
 
-    admin.addPeer("1", slaveClusterKey);
+    admin.addPeer("2", slaveClusterKey);
     Thread.sleep(SLEEP_TIME);
     rowKey = Bytes.toBytes("do rep");
     put = new Put(rowKey);

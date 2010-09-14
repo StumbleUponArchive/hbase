@@ -296,10 +296,10 @@ public class ReplicationSourceManager implements LogActionsListener {
     LOG.info("Moving " + rsZnode + "'s hlogs to my queue");
     SortedMap<String, SortedSet<String>> newQueues =
         this.zkHelper.copyQueuesFromRS(rsZnode);
+    this.zkHelper.deleteRsQueues(rsZnode);
     if (newQueues == null || newQueues.size() == 0) {
       return;
     }
-    this.zkHelper.deleteRsQueues(rsZnode);
 
     for (Map.Entry<String, SortedSet<String>> entry : newQueues.entrySet()) {
       String peerId = entry.getKey();
@@ -418,7 +418,9 @@ public class ReplicationSourceManager implements LogActionsListener {
       }
       // Reset the watch
       List<String> currentPeers = zkHelper.listPeersIds(this);
-
+      if (currentPeers == null) {
+        return;
+      }
       // If it was deleted, close and return
       if (watchedEvent.getType().equals(Event.EventType.NodeDeleted)) {
         String id = zkHelper.getZNodeName(watchedEvent.getPath());

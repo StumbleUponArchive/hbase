@@ -8,6 +8,10 @@ Added for StumbleUpon's 0.89 rebase
    HBASE-2967  Failed split: IOE 'File is Corrupt!' -- sync length not being written out to SequenceFile
    HBASE-2975  DFSClient names in master and RS should be unique
    !!! Removed the ZooKeeper-based assignment
+   HBASE-2989  [replication] RSM won't cleanup after locking if 0 peers
+   Bandaid for HBASE-2990, the minimum is now 2 instead of 4 so that the biggest file doesn't get compacted
+   pom.xml changed to use SU-patched 0.20.2-321 to fix a NPE that happens in a race between DFSClient sync and close
+   HBASE-2992  [replication] MalformedObjectNameException in ReplicationMetrics
 
 Release 0.21.0 - Unreleased
   INCOMPATIBLE CHANGES
