@@ -306,8 +306,15 @@ public class HRegionServer implements HRegionInterface,
     this.abortRequested = false;
     this.stopRequested.set(false);
 
+
+    //HRegionInterface,
+    //HBaseRPCErrorHandler, Runnable, Watcher, Stoppable, OnlineRegions
+
     // Server to handle client requests
-    this.server = HBaseRPC.getServer(this, address.getBindAddress(),
+    this.server = HBaseRPC.getServer(this,
+        new Class<?>[]{HRegionInterface.class, HBaseRPCErrorHandler.class,
+        OnlineRegions.class},
+        address.getBindAddress(),
       address.getPort(), conf.getInt("hbase.regionserver.handler.count", 10),
       false, conf);
     this.server.setErrorHandler(this);
@@ -728,15 +735,15 @@ public class HRegionServer implements HRegionInterface,
           this.serverInfo.getServerAddress() + ", Now=" + hra);
         this.serverInfo.setServerAddress(hsa);
       }
-      
-      // hack! Maps DFSClient => RegionServer for logs.  HDFS made this 
+
+      // hack! Maps DFSClient => RegionServer for logs.  HDFS made this
       // config param for task trackers, but we can piggyback off of it.
       if (this.conf.get("mapred.task.id") == null) {
         this.conf.set("mapred.task.id", 
             "hb_rs_" + this.serverInfo.getServerName() + "_" +
             System.currentTimeMillis());
       }
-      
+
       // Master sent us hbase.rootdir to use. Should be fully qualified
       // path with file system specification included.  Set 'fs.defaultFS'
       // to match the filesystem on hbase.rootdir else underlying hadoop hdfs
