@@ -17,6 +17,7 @@ Added for StumbleUpon's 0.89 rebase
    HBASE-2643  Figure how to deal with eof splitting logs
    HBASE-3013  Tool to verify data in two clusters
    HBASE-2941  port HADOOP-6713 - threading scalability for RPC reads - to HBase
+   HBASE-2782  QOS for META table access
 
 Release 0.21.0 - Unreleased
   INCOMPATIBLE CHANGES
