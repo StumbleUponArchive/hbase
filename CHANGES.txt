@@ -16,6 +16,7 @@ Added for StumbleUpon's 0.89 rebase
    HBASE-3009  ICV-style update of Memstore for single-qualifier and frequent puts
    HBASE-2643  Figure how to deal with eof splitting logs
    HBASE-3013  Tool to verify data in two clusters
+   HBASE-2941  port HADOOP-6713 - threading scalability for RPC reads - to HBase
 
 Release 0.21.0 - Unreleased
   INCOMPATIBLE CHANGES
