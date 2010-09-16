@@ -12,6 +12,10 @@ Added for StumbleUpon's 0.89 rebase
    Bandaid for HBASE-2990, the minimum is now 2 instead of 4 so that the biggest file doesn't get compacted
    pom.xml changed to use SU-patched 0.20.2-321 to fix a NPE that happens in a race between DFSClient sync and close
    HBASE-2992  [replication] MalformedObjectNameException in ReplicationMetrics
+   HBASE-3008  Memstore.updateColumnValue passes wrong flag to heapSizeChange
+   HBASE-3009  ICV-style update of Memstore for single-qualifier and frequent puts
+   HBASE-2643  Figure how to deal with eof splitting logs
+   HBASE-3013  Tool to verify data in two clusters
 
 Release 0.21.0 - Unreleased
   INCOMPATIBLE CHANGES

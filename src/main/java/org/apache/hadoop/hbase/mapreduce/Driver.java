@@ -19,6 +19,7 @@
  */
 package org.apache.hadoop.hbase.mapreduce;
 
+import org.apache.hadoop.hbase.mapreduce.replication.VerifyReplication;
 import org.apache.hadoop.util.ProgramDriver;
 
 /**
@@ -41,6 +42,8 @@ public class Driver {
                  "Complete a bulk data load.");
     pgd.addClass(CopyTable.NAME, CopyTable.class,
         "Export a table from local cluster to peer cluster");
+    pgd.addClass(VerifyReplication.NAME, VerifyReplication.class, "Verify the " +
+        "data between a local and a replicated table on a remote cluster");
     pgd.driver(args);
   }
 }

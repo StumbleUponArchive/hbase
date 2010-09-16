@@ -1,12 +1,37 @@
+/**
+ * Copyright 2010 The Apache Software Foundation
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.apache.hadoop.hbase.client.replication;
 
 import java.io.IOException;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.HConnectionManager;
+import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.replication.ReplicationPeer;
 import org.apache.hadoop.hbase.replication.ReplicationZookeeperWrapper;
+import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWrapper;
 
 /**
@@ -116,5 +141,47 @@ public class ReplicationAdmin {
    */
   public ReplicationZookeeperWrapper getZkWrapper() {
     return zkWrapper;
+  }
+
+  public long verifyReplication(String id, String tableName, long startTime) throws Exception {
+    if (startTime <= 60000) {
+      throw new IllegalArgumentException("start time must be bigger than 1 minute (60000)");
+    }
+    startTime = System.currentTimeMillis() - startTime;
+    long stopTime = System.currentTimeMillis() - 60000;
+    ReplicationPeer peer = this.zkWrapper.getPeer(id);
+    HTable ourTable = new HTable(tableName);
+    HTable replicatedTable = new HTable(peer.getConfiguration(), tableName);
+    Scan ourScan = new Scan();
+    ourScan.setCaching(30);
+    ourScan.setTimeRange(startTime, stopTime);
+    ResultScanner ourScanner = ourTable.getScanner(ourScan);
+    ResultScanner replicatedScanner = replicatedTable.getScanner(new Scan(ourScan));
+    long count = 0;
+    for (Result ourResult : ourScanner) {
+      Result replicatedResult = replicatedScanner.next();
+      compareResult(ourResult, replicatedResult);
+      count++;
+    }
+    if (replicatedScanner.next() != null) {
+      throw new Exception("The slave has more rows than us, we only had " + count + " rows");
+    }
+    return count;
+  }
+
+  public static void compareResult(Result res1, Result res2) throws Exception{
+    if (res2 == null) {
+      throw new Exception("There wasn't enough rows, we stopped at" + Bytes.toString(res1.getRow()));
+    }
+    if (res1.size() != res2.size()) {
+      throw new Exception("This row doesn't have the same number of KVs: " + res1.toString() + " compared to " + res2.toString());
+    }
+    KeyValue[] ourKVs = res1.sorted();
+    KeyValue[] replicatedKVs = res2.sorted();
+    for (int i = 0; i < res1.size(); i++) {
+      if (!ourKVs[i].equals(replicatedKVs[i]) && !Bytes.equals(ourKVs[i].getValue(), replicatedKVs[i].getValue())) {
+        throw new Exception("This result was different: " + res1.toString() + " compared to " + res2.toString());
+      }
+    }
   }
 }

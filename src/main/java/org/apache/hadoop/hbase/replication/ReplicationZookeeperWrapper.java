@@ -226,17 +226,26 @@ public class ReplicationZookeeperWrapper {
       LOG.warn("Multiple slaves feature not supported");
       return false;
     }
+    ReplicationPeer peer = getPeer(peerId);
+    this.peerClusters.put(peerId, peer);
+    this.zookeeperWrapper.ensureExists(this.zookeeperWrapper.getZNode(
+        this.rsServerNameZnode, peerId));
+    LOG.info("Added new peer cluster " + peer.getClusterKey());
+    return true;
+  }
+
+  public ReplicationPeer getPeer(String peerId) {
     String otherClusterKey = Bytes.toString(this.zookeeperWrapper.getData(
         this.peersZNode, peerId));
     if (this.ourClusterKey.equals(otherClusterKey)) {
       LOG.debug("Not connecting to " + peerId + " because it's us");
-      return false;
+      return null;
     }
     String[] ensemble = otherClusterKey.split(":");
     if (ensemble.length != 3) {
      LOG.warn("Wrong format of cluster address: " +
           this.zookeeperWrapper.getData(this.peersZNode, peerId));
-      return false;
+      return null;
     }
     // Construct the connection to the new peer
     Configuration otherConf = new Configuration(this.conf);
@@ -245,12 +254,8 @@ public class ReplicationZookeeperWrapper {
     otherConf.set(HConstants.ZOOKEEPER_ZNODE_PARENT, ensemble[2]);
     ZooKeeperWrapper zkw = ZooKeeperWrapper.createInstance(otherConf,
         "connection to cluster: " + peerId);
-    ReplicationPeer peer = new ReplicationPeer(peerId, otherClusterKey, zkw);
-    this.peerClusters.put(peerId, peer);
-    this.zookeeperWrapper.ensureExists(this.zookeeperWrapper.getZNode(
-        this.rsServerNameZnode, peerId));
-    LOG.info("Added new peer cluster " + StringUtils.arrayToString(ensemble));
-    return true;
+    return new ReplicationPeer(otherConf, peerId,
+        otherClusterKey, zkw);
   }
 
   /**

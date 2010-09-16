@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.HServerAddress;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWrapper;
 
@@ -16,8 +17,10 @@ public class ReplicationPeer {
   private final AtomicBoolean peerEnabled = new AtomicBoolean();
   // Cannot be final since a new object needs to be recreated when session fails
   private ZooKeeperWrapper zkw;
+  private final Configuration conf;
 
-  public ReplicationPeer(String key, String id, ZooKeeperWrapper zkw) {
+  public ReplicationPeer(Configuration conf, String key, String id, ZooKeeperWrapper zkw) {
+    this.conf = conf;
     this.clusterKey = key;
     this.id = id;
     this.zkw = zkw;
@@ -43,11 +46,11 @@ public class ReplicationPeer {
     this.regionServers = regionServers;
   }
 
-  public void setZkw(ZooKeeperWrapper zkw) {
-    this.zkw = zkw;
-  }
-
   public String getId() {
     return id;
+  }
+
+  public Configuration getConfiguration() {
+    return conf;
   }
 }

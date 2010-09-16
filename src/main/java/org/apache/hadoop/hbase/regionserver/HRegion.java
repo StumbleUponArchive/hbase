@@ -1413,7 +1413,18 @@ public class HRegion implements HeapSize { // , Writable{
         if (batchOp.retCodes[i] != OperationStatusCode.NOT_RUN) continue;
 
         Put p = batchOp.operations[i].getFirst();
-        addedSize += applyFamilyMapToMemstore(p.getFamilyMap());
+        if (walEdit != null && walEdit.getKeyValues().size() == 1) {
+          KeyValue kv = walEdit.getKeyValues().get(0);
+          // Only 1 KV, does the user care about versions? If no, update in-place
+          if (regionInfo.getTableDesc().getFamily(kv.getFamily()).getMaxVersions() == 1) {
+            addedSize = getStore(kv.getFamily()).updateColumnValue(kv.getRow(),
+                kv.getFamily(), kv.getQualifier(), kv.getValue());
+          } else {
+            addedSize = applyFamilyMapToMemstore(p.getFamilyMap());
+          }
+        } else {
+          addedSize = applyFamilyMapToMemstore(p.getFamilyMap());
+        }
         batchOp.retCodes[i] = OperationStatusCode.SUCCESS;
       }
       success = true;
@@ -1618,19 +1629,32 @@ public class HRegion implements HeapSize { // , Writable{
     try {
       checkFamilies(familyMap.keySet());
       updateKVTimestamps(familyMap.values(), byteNow);
+      WALEdit walEdit = null;
       // write/sync to WAL should happen before we touch memstore.
       //
       // If order is reversed, i.e. we write to memstore first, and
       // for some reason fail to write/sync to commit log, the memstore
       // will contain uncommitted transactions.
       if (writeToWAL) {
-        WALEdit walEdit = new WALEdit();
+        walEdit = new WALEdit();
         addFamilyMapToWALEdit(familyMap, walEdit);
         this.log.append(regionInfo, regionInfo.getTableDesc().getName(),
            walEdit, now);
       }
-
-      long addedSize = applyFamilyMapToMemstore(familyMap);
+      long addedSize = 0;
+      // Check if this is an occasion for in-place update
+      if (walEdit != null && walEdit.getKeyValues().size() == 1) {
+        KeyValue kv = walEdit.getKeyValues().get(0);
+        // Only 1 KV, does the user care about versions? If no, update in-place
+        if (regionInfo.getTableDesc().getFamily(kv.getFamily()).getMaxVersions() == 1) {
+          addedSize = getStore(kv.getFamily()).updateColumnValue(kv.getRow(),
+              kv.getFamily(), kv.getQualifier(), kv.getValue());
+        } else {
+          addedSize = applyFamilyMapToMemstore(familyMap);
+        }
+      } else {
+        addedSize = applyFamilyMapToMemstore(familyMap);
+      }
       flush = isFlushSize(memstoreSize.addAndGet(addedSize));
     } finally {
       this.updatesLock.readLock().unlock();

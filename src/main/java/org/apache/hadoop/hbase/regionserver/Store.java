@@ -1296,6 +1296,26 @@ public class Store implements HeapSize {
   public long updateColumnValue(byte [] row, byte [] f,
                                 byte [] qualifier, long newValue)
       throws IOException {
+    return updateColumnValue(row, f, qualifier, Bytes.toBytes(newValue));
+  }
+
+  /**
+   * Increments the value for the given row/family/qualifier.
+   *
+   * This function will always be seen as atomic by other readers
+   * because it only puts a single KV to memstore. Thus no
+   * read/write control necessary.
+   *
+   * @param row
+   * @param f
+   * @param qualifier
+   * @param newValue the new value to set into memstore
+   * @return memstore size delta
+   * @throws IOException
+   */
+  public long updateColumnValue(byte [] row, byte [] f,
+                                byte [] qualifier, byte [] newValue)
+      throws IOException {
 
     this.lock.readLock().lock();
     try {
