@@ -18,6 +18,9 @@ Added for StumbleUpon's 0.89 rebase
    HBASE-3013  Tool to verify data in two clusters
    HBASE-2941  port HADOOP-6713 - threading scalability for RPC reads - to HBase
    HBASE-2782  QOS for META table access
+   HBASE-3006  Reading compressed HFile blocks causes way too many DFS RPC
+               calls severly impacting performance
+               (Kannan Muthukkaruppan via Stack)
 
 Release 0.21.0 - Unreleased
   INCOMPATIBLE CHANGES
