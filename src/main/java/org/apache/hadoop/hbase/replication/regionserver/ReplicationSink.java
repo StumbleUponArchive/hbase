@@ -87,7 +87,7 @@ public class ReplicationSink {
    * @param entries
    * @throws IOException
    */
-  public synchronized void replicateEntries(HLog.Entry[] entries)
+  public void replicateEntries(HLog.Entry[] entries)
       throws IOException {
     if (entries.length == 0) {
       return;
@@ -174,7 +174,6 @@ public class ReplicationSink {
       table = this.pool.getTable(tableName);
       table.put(puts);
       this.metrics.appliedOpsRate.inc(puts.size());
-      this.pool.putTable(table);
       puts.clear();
     } finally {
       if (table != null) {
@@ -195,7 +194,6 @@ public class ReplicationSink {
       table = this.pool.getTable(tableName);
       table.delete(delete);
       this.metrics.appliedOpsRate.inc(1);
-      this.pool.putTable(table);
     } finally {
       if (table != null) {
         this.pool.putTable(table);

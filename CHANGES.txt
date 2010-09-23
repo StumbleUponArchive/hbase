@@ -21,6 +21,7 @@ Added for StumbleUpon's 0.89 rebase
    HBASE-3006  Reading compressed HFile blocks causes way too many DFS RPC
                calls severly impacting performance
                (Kannan Muthukkaruppan via Stack)
+   HBASE-3033  [replication] ReplicationSink.replicateEntries doesn't need to be sync'ed
 
 Release 0.21.0 - Unreleased
   INCOMPATIBLE CHANGES
