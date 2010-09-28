@@ -22,6 +22,11 @@ Added for StumbleUpon's 0.89 rebase
                calls severly impacting performance
                (Kannan Muthukkaruppan via Stack)
    HBASE-3033  [replication] ReplicationSink.replicateEntries doesn't need to be sync'ed
+   HBASE-3042  Use LO4J in SequenceFileLogReader
+   HBASE-3038  WALReaderFSDataInputStream.getPos() fails if Filesize > MAX_INT
+   HBASE-3044  ReplicationSource won't cleanup logs if there's nothing to replicate
+   HBASE-3041  ReplicationSink shouldn't kill the whole RS when it fails to replicate
+   HBASE-2889  Tool to look at HLogs -- parse and tail -f (part 1 and 2)
 
 Release 0.21.0 - Unreleased
   INCOMPATIBLE CHANGES
