@@ -31,6 +31,7 @@ Added for StumbleUpon's 0.89 rebase
    HBASE-3041  ReplicationSink shouldn't kill the whole RS when it fails to replicate
    HBASE-2889  Tool to look at HLogs -- parse and tail -f (part 1 and 2)
    HBASE-3040  BlockIndex readIndex too slowly in heavy write scenario
+   HBASE-2646  Compaction requests should be prioritized to prevent blocking
 
 
 Release 0.21.0 - Unreleased
