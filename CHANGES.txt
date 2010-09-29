@@ -21,12 +21,17 @@ Added for StumbleUpon's 0.89 rebase
    HBASE-3006  Reading compressed HFile blocks causes way too many DFS RPC
                calls severly impacting performance
                (Kannan Muthukkaruppan via Stack)
+   HBASE-2450  For single row reads of specific columns, seek to the 
+               first column in HFiles rather than start of row
+               (Pranav via Ryan, some Ryan)
    HBASE-3033  [replication] ReplicationSink.replicateEntries doesn't need to be sync'ed
    HBASE-3042  Use LO4J in SequenceFileLogReader
    HBASE-3038  WALReaderFSDataInputStream.getPos() fails if Filesize > MAX_INT
    HBASE-3044  ReplicationSource won't cleanup logs if there's nothing to replicate
    HBASE-3041  ReplicationSink shouldn't kill the whole RS when it fails to replicate
    HBASE-2889  Tool to look at HLogs -- parse and tail -f (part 1 and 2)
+   HBASE-3040  BlockIndex readIndex too slowly in heavy write scenario
+
 
 Release 0.21.0 - Unreleased
   INCOMPATIBLE CHANGES
@@ -935,6 +940,9 @@ Release 0.21.0 - Unreleased
    HBASE-410   [testing] Speed up the test suite
    HBASE-2041  Change WAL default configuration values
    HBASE-2997  Performance fixes - profiler driven
+   HBASE-2450  For single row reads of specific columns, seek to the 
+   	       first column in HFiles rather than start of row
+	       (Pranav via Ryan, some Ryan)
 
 
 Release 0.20.0 - Tue Sep  8 12:53:05 PDT 2009
