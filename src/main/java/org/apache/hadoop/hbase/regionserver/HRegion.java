@@ -1417,13 +1417,13 @@ public class HRegion implements HeapSize { // , Writable{
           KeyValue kv = walEdit.getKeyValues().get(0);
           // Only 1 KV, does the user care about versions? If no, update in-place
           if (regionInfo.getTableDesc().getFamily(kv.getFamily()).getMaxVersions() == 1) {
-            addedSize = getStore(kv.getFamily()).updateColumnValue(kv.getRow(),
+            addedSize += getStore(kv.getFamily()).updateColumnValue(kv.getRow(),
                 kv.getFamily(), kv.getQualifier(), kv.getValue());
           } else {
-            addedSize = applyFamilyMapToMemstore(p.getFamilyMap());
+            addedSize += applyFamilyMapToMemstore(p.getFamilyMap());
           }
         } else {
-          addedSize = applyFamilyMapToMemstore(p.getFamilyMap());
+          addedSize += applyFamilyMapToMemstore(p.getFamilyMap());
         }
         batchOp.retCodes[i] = OperationStatusCode.SUCCESS;
       }
