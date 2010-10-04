@@ -1932,7 +1932,8 @@ public class KeyValue implements Writable, HeapSize {
     return ClassSize.align(ClassSize.OBJECT + (2 * ClassSize.REFERENCE) +
         ClassSize.align(ClassSize.ARRAY + length) +
         (3 * Bytes.SIZEOF_INT) +
-        ClassSize.align(ClassSize.ARRAY + (rowCache == null ? 0 : rowCache.length)) +
+        // deliberately ignore the rowCache.length, causes issues with ICV
+        ClassSize.align(ClassSize.ARRAY) +
         (2 * Bytes.SIZEOF_LONG));
   }
 
