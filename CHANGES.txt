@@ -32,6 +32,7 @@ Added for StumbleUpon's 0.89 rebase
    HBASE-2889  Tool to look at HLogs -- parse and tail -f (part 1 and 2)
    HBASE-3040  BlockIndex readIndex too slowly in heavy write scenario
    HBASE-2646  Compaction requests should be prioritized to prevent blocking
+   HBASE-3082  For ICV gets, first look in MemStore before reading StoreFiles
 
 
 Release 0.21.0 - Unreleased
