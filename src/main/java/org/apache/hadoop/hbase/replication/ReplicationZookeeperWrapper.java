@@ -227,6 +227,9 @@ public class ReplicationZookeeperWrapper {
       return false;
     }
     ReplicationPeer peer = getPeer(peerId);
+    if (peer == null) {
+      return false;
+    }
     this.peerClusters.put(peerId, peer);
     this.zookeeperWrapper.ensureExists(this.zookeeperWrapper.getZNode(
         this.rsServerNameZnode, peerId));
@@ -459,7 +462,7 @@ public class ReplicationZookeeperWrapper {
       String otherRSNameZNode =
           this.zookeeperWrapper.getZNode(this.rsZNode, znode);
       if (otherRSNameZNode.equals(rsServerNameZnode)) {
-        LOG.warn("Won't lock because this is us, we're dead!");
+        LOG.warn("Won't lock because this is us");
         return false;
       }
       this.zookeeperWrapper.writeZNode(otherRSNameZNode,

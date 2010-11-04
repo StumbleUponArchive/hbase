@@ -117,9 +117,6 @@ public class TestReplication {
     zkw2 = ZooKeeperWrapper.createInstance(conf2, "cluster2");
     zkw2.writeZNode("/2", "replication", "");
 
-    /*zkw1.writeZNode("/1/replication/peers", "1",
-        conf2.get(HConstants.ZOOKEEPER_QUORUM)+":" +
-            conf2.get("hbase.zookeeper.property.clientPort")+":/2");*/
     slaveClusterKey = conf2.get(HConstants.ZOOKEEPER_QUORUM)+":" +
             conf2.get("hbase.zookeeper.property.clientPort")+":/2";
     admin.addPeer("2", slaveClusterKey);
@@ -149,9 +146,7 @@ public class TestReplication {
 
   private static void setIsReplication(boolean rep) throws Exception {
     LOG.info("Set rep " + rep);
-    //zkw1.writeZNode("/1/replication", "state", Boolean.toString(rep));
     admin.setReplicating(rep);
-    // Takes some ms for ZK to fire the watcher
     Thread.sleep(SLEEP_TIME);
   }
 
@@ -161,7 +156,8 @@ public class TestReplication {
   @Before
   public void setUp() throws Exception {
     utility1.truncateTable(tableName);
-    // If test is flaky, set that sleep higher
+    // Manually delete everything, while making sure
+    // nothing is replicated while we do it
     Scan scan = new Scan();
     int lastCount = 0;
     for (int i = 0; i < NB_RETRIES; i++) {

@@ -178,7 +178,7 @@ public class ReplicationSourceManager implements LogActionsListener {
     synchronized (this.hlogs) {
       this.sources.add(src);
       if (this.hlogs.size() > 0) {
-        // Add the latest hlog to that source's queue
+        // Add the oldest hlog to that source's queue
         this.zkHelper.addLogToList(this.hlogs.last(),
             this.sources.get(0).getPeerClusterZnode());
         src.enqueueLog(this.latestPath);
@@ -371,7 +371,6 @@ public class ReplicationSourceManager implements LogActionsListener {
     srcToRemove.terminate();
     this.sources.remove(srcToRemove);
     this.zkHelper.deleteSource(id, true);
-
   }
 
   /**

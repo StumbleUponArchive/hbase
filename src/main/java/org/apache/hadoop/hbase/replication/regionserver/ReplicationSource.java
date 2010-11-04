@@ -674,10 +674,6 @@ public class ReplicationSource extends Thread
     return this.currentPath;
   }
 
-  /**
-   * Set if this source is enabled or disabled
-   * @param status the new status
-   */
   public void setSourceEnabled(boolean status) {
     this.sourceEnabled.set(status);
   }
