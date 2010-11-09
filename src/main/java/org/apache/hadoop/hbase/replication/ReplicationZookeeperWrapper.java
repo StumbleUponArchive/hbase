@@ -518,6 +518,7 @@ public class ReplicationZookeeperWrapper {
         for (String hlog : hlogs) {
           String position = Bytes.toString(
               this.zookeeperWrapper.getData(clusterPath, hlog));
+          position = position == null ? "" : position;
           LOG.debug("Creating " + hlog + " with data " + position);
           this.zookeeperWrapper.writeZNode(newClusterZnode, hlog, position);
           logQueue.add(hlog);
