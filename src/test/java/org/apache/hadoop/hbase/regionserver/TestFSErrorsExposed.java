@@ -147,8 +147,10 @@ public class TestFSErrorsExposed {
    * Cluster test which starts a region server with a region, then
    * removes the data from HDFS underneath it, and ensures that
    * errors are bubbled to the client.
+   *
+   * DISABLED
    */
-  @Test
+  //@Test
   public void testFullSystemBubblesFSErrors() throws Exception {
     try {
       util.startMiniCluster(1);
