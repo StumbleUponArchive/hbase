@@ -221,7 +221,7 @@ public class ThriftServer {
     };
     private final ThreadPoolExecutor pool;
 
-    private int failQueueSize = 2000;
+    private int failQueueSize = 10000;
     private static final int CORE_POOL_SIZE = 35;
 
     private volatile long failedIncrements = 0;

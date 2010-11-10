@@ -37,6 +37,7 @@ public class TestThriftServerQueueICV extends TestCase {
   private ThreadPoolExecutor pool;
   private BlockingQueue queue;
   private ThriftServer.HBaseHandler handler;
+  private int failQueueSize;
 
   @Override
   public void setUp() throws Exception {
@@ -59,6 +60,7 @@ public class TestThriftServerQueueICV extends TestCase {
     when(pool.getQueue()).thenReturn(this.queue);
 
     handler = new ThriftServer.HBaseHandler();
+    failQueueSize = handler.getFailQueueSize();
   }
 
   private void disableJMX() throws Exception {
@@ -76,7 +78,7 @@ public class TestThriftServerQueueICV extends TestCase {
   public void testQueueSuccessful() throws Exception {
     when(queue.size())
         .thenReturn(0)
-        .thenReturn(1000);
+        .thenReturn(failQueueSize);
 
     List mList = mock(List.class);
 
@@ -88,8 +90,8 @@ public class TestThriftServerQueueICV extends TestCase {
   }
   
   public void testQueueFailure() throws Exception {
-    when(queue.size()).thenReturn(1001)
-        .thenReturn(2000);
+    when(queue.size()).thenReturn(failQueueSize+1)
+        .thenReturn(failQueueSize+1000);
 
     List mList = mock(List.class);
     assertFalse(handler.queueIncrementColumnValues(mList));
@@ -101,7 +103,7 @@ public class TestThriftServerQueueICV extends TestCase {
 
   public void testMixedSuccessFail() throws Exception {
     when(queue.size()).thenReturn(1)
-        .thenReturn(2000)
+        .thenReturn(failQueueSize+1000)
         .thenReturn(20);
 
     List mList = mock(List.class);
