@@ -38,6 +38,8 @@ Added for StumbleUpon's 0.89 rebase
    HBASE-3208  HLog.findMemstoresWithEditsOlderThan needs to look for edits
                that are equal to too
    HBASE-3096  TestCompaction times out in latest release
+   HBASE-3308  SplitTransaction.splitStoreFiles slows splits a lot
+   HBASE-3318  Split rollback leaves parent with writesEnabled=false
 
 
 
