@@ -15,18 +15,21 @@ import java.util.HashSet;
 import java.util.EnumSet;
 import java.util.Collections;
 import java.util.BitSet;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.thrift.*;
+import org.apache.thrift.async.*;
 import org.apache.thrift.meta_data.*;
+import org.apache.thrift.transport.*;
 import org.apache.thrift.protocol.*;
 
 /**
  * For batch increments.
  */
-public class Increment implements TBase<Increment._Fields>, java.io.Serializable, Cloneable, Comparable<Increment> {
+public class Increment implements TBase<Increment, Increment._Fields>, java.io.Serializable, Cloneable {
   private static final TStruct STRUCT_DESC = new TStruct("Increment");
 
   private static final TField TABLE_FIELD_DESC = new TField("table", TType.STRING, (short)1);
@@ -34,9 +37,9 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
   private static final TField COLUMN_FIELD_DESC = new TField("column", TType.STRING, (short)3);
   private static final TField AMOUNT_FIELD_DESC = new TField("amount", TType.I64, (short)4);
 
-  public byte[] table;
-  public byte[] row;
-  public byte[] column;
+  public ByteBuffer table;
+  public ByteBuffer row;
+  public ByteBuffer column;
   public long amount;
 
   /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
@@ -46,12 +49,10 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
     COLUMN((short)3, "column"),
     AMOUNT((short)4, "amount");
 
-    private static final Map<Integer, _Fields> byId = new HashMap<Integer, _Fields>();
     private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
 
     static {
       for (_Fields field : EnumSet.allOf(_Fields.class)) {
-        byId.put((int)field._thriftId, field);
         byName.put(field.getFieldName(), field);
       }
     }
@@ -60,7 +61,18 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
      * Find the _Fields constant that matches fieldId, or null if its not found.
      */
     public static _Fields findByThriftId(int fieldId) {
-      return byId.get(fieldId);
+      switch(fieldId) {
+        case 1: // TABLE
+          return TABLE;
+        case 2: // ROW
+          return ROW;
+        case 3: // COLUMN
+          return COLUMN;
+        case 4: // AMOUNT
+          return AMOUNT;
+        default:
+          return null;
+      }
     }
 
     /**
@@ -101,18 +113,18 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
   private static final int __AMOUNT_ISSET_ID = 0;
   private BitSet __isset_bit_vector = new BitSet(1);
 
-  public static final Map<_Fields, FieldMetaData> metaDataMap = Collections.unmodifiableMap(new EnumMap<_Fields, FieldMetaData>(_Fields.class) {{
-    put(_Fields.TABLE, new FieldMetaData("table", TFieldRequirementType.DEFAULT,
-        new FieldValueMetaData(TType.STRING)));
-    put(_Fields.ROW, new FieldMetaData("row", TFieldRequirementType.DEFAULT,
-        new FieldValueMetaData(TType.STRING)));
-    put(_Fields.COLUMN, new FieldMetaData("column", TFieldRequirementType.DEFAULT,
-        new FieldValueMetaData(TType.STRING)));
-    put(_Fields.AMOUNT, new FieldMetaData("amount", TFieldRequirementType.DEFAULT,
-        new FieldValueMetaData(TType.I64)));
-  }});
-
+  public static final Map<_Fields, FieldMetaData> metaDataMap;
   static {
+    Map<_Fields, FieldMetaData> tmpMap = new EnumMap<_Fields, FieldMetaData>(_Fields.class);
+    tmpMap.put(_Fields.TABLE, new FieldMetaData("table", TFieldRequirementType.DEFAULT,
+        new FieldValueMetaData(TType.STRING        , "Text")));
+    tmpMap.put(_Fields.ROW, new FieldMetaData("row", TFieldRequirementType.DEFAULT,
+        new FieldValueMetaData(TType.STRING        , "Text")));
+    tmpMap.put(_Fields.COLUMN, new FieldMetaData("column", TFieldRequirementType.DEFAULT,
+        new FieldValueMetaData(TType.STRING        , "Text")));
+    tmpMap.put(_Fields.AMOUNT, new FieldMetaData("amount", TFieldRequirementType.DEFAULT,
+        new FieldValueMetaData(TType.I64)));
+    metaDataMap = Collections.unmodifiableMap(tmpMap);
     FieldMetaData.addStructMetaDataMap(Increment.class, metaDataMap);
   }
 
@@ -120,9 +132,9 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
   }
 
   public Increment(
-    byte[] table,
-    byte[] row,
-    byte[] column,
+    ByteBuffer table,
+    ByteBuffer row,
+    ByteBuffer column,
     long amount)
   {
     this();
@@ -155,16 +167,30 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
     return new Increment(this);
   }
 
-  @Deprecated
-  public Increment clone() {
-    return new Increment(this);
+  @Override
+  public void clear() {
+    this.table = null;
+    this.row = null;
+    this.column = null;
+    setAmountIsSet(false);
+    this.amount = 0;
   }
 
   public byte[] getTable() {
-    return this.table;
+    setTable(TBaseHelper.rightSize(table));
+    return table.array();
+  }
+
+  public ByteBuffer BufferForTable() {
+    return table;
   }
 
   public Increment setTable(byte[] table) {
+    setTable(ByteBuffer.wrap(table));
+    return this;
+  }
+
+  public Increment setTable(ByteBuffer table) {
     this.table = table;
     return this;
   }
@@ -185,10 +211,20 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
   }
 
   public byte[] getRow() {
-    return this.row;
+    setRow(TBaseHelper.rightSize(row));
+    return row.array();
+  }
+
+  public ByteBuffer BufferForRow() {
+    return row;
   }
 
   public Increment setRow(byte[] row) {
+    setRow(ByteBuffer.wrap(row));
+    return this;
+  }
+
+  public Increment setRow(ByteBuffer row) {
     this.row = row;
     return this;
   }
@@ -209,10 +245,20 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
   }
 
   public byte[] getColumn() {
-    return this.column;
+    setColumn(TBaseHelper.rightSize(column));
+    return column.array();
+  }
+
+  public ByteBuffer BufferForColumn() {
+    return column;
   }
 
   public Increment setColumn(byte[] column) {
+    setColumn(ByteBuffer.wrap(column));
+    return this;
+  }
+
+  public Increment setColumn(ByteBuffer column) {
     this.column = column;
     return this;
   }
@@ -261,7 +307,7 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
       if (value == null) {
         unsetTable();
       } else {
-        setTable((byte[])value);
+        setTable((ByteBuffer)value);
       }
       break;
 
@@ -269,7 +315,7 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
       if (value == null) {
         unsetRow();
       } else {
-        setRow((byte[])value);
+        setRow((ByteBuffer)value);
       }
       break;
 
@@ -277,7 +323,7 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
       if (value == null) {
         unsetColumn();
       } else {
-        setColumn((byte[])value);
+        setColumn((ByteBuffer)value);
       }
       break;
 
@@ -290,10 +336,6 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
       break;
 
     }
-  }
-
-  public void setFieldValue(int fieldID, Object value) {
-    setFieldValue(_Fields.findByThriftIdOrThrow(fieldID), value);
   }
 
   public Object getFieldValue(_Fields field) {
@@ -314,12 +356,12 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
     throw new IllegalStateException();
   }
 
-  public Object getFieldValue(int fieldId) {
-    return getFieldValue(_Fields.findByThriftIdOrThrow(fieldId));
-  }
-
   /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
   public boolean isSet(_Fields field) {
+    if (field == null) {
+      throw new IllegalArgumentException();
+    }
+
     switch (field) {
     case TABLE:
       return isSetTable();
@@ -331,10 +373,6 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
       return isSetAmount();
     }
     throw new IllegalStateException();
-  }
-
-  public boolean isSet(int fieldID) {
-    return isSet(_Fields.findByThriftIdOrThrow(fieldID));
   }
 
   @Override
@@ -355,7 +393,7 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
     if (this_present_table || that_present_table) {
       if (!(this_present_table && that_present_table))
         return false;
-      if (!java.util.Arrays.equals(this.table, that.table))
+      if (!this.table.equals(that.table))
         return false;
     }
 
@@ -364,7 +402,7 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
     if (this_present_row || that_present_row) {
       if (!(this_present_row && that_present_row))
         return false;
-      if (!java.util.Arrays.equals(this.row, that.row))
+      if (!this.row.equals(that.row))
         return false;
     }
 
@@ -373,7 +411,7 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
     if (this_present_column || that_present_column) {
       if (!(this_present_column && that_present_column))
         return false;
-      if (!java.util.Arrays.equals(this.column, that.column))
+      if (!this.column.equals(that.column))
         return false;
     }
 
@@ -402,39 +440,51 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
     int lastComparison = 0;
     Increment typedOther = (Increment)other;
 
-    lastComparison = Boolean.valueOf(isSetTable()).compareTo(isSetTable());
+    lastComparison = Boolean.valueOf(isSetTable()).compareTo(typedOther.isSetTable());
     if (lastComparison != 0) {
       return lastComparison;
     }
-    lastComparison = TBaseHelper.compareTo(table, typedOther.table);
+    if (isSetTable()) {
+      lastComparison = TBaseHelper.compareTo(this.table, typedOther.table);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+    }
+    lastComparison = Boolean.valueOf(isSetRow()).compareTo(typedOther.isSetRow());
     if (lastComparison != 0) {
       return lastComparison;
     }
-    lastComparison = Boolean.valueOf(isSetRow()).compareTo(isSetRow());
+    if (isSetRow()) {
+      lastComparison = TBaseHelper.compareTo(this.row, typedOther.row);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+    }
+    lastComparison = Boolean.valueOf(isSetColumn()).compareTo(typedOther.isSetColumn());
     if (lastComparison != 0) {
       return lastComparison;
     }
-    lastComparison = TBaseHelper.compareTo(row, typedOther.row);
+    if (isSetColumn()) {
+      lastComparison = TBaseHelper.compareTo(this.column, typedOther.column);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+    }
+    lastComparison = Boolean.valueOf(isSetAmount()).compareTo(typedOther.isSetAmount());
     if (lastComparison != 0) {
       return lastComparison;
     }
-    lastComparison = Boolean.valueOf(isSetColumn()).compareTo(isSetColumn());
-    if (lastComparison != 0) {
-      return lastComparison;
-    }
-    lastComparison = TBaseHelper.compareTo(column, typedOther.column);
-    if (lastComparison != 0) {
-      return lastComparison;
-    }
-    lastComparison = Boolean.valueOf(isSetAmount()).compareTo(isSetAmount());
-    if (lastComparison != 0) {
-      return lastComparison;
-    }
-    lastComparison = TBaseHelper.compareTo(amount, typedOther.amount);
-    if (lastComparison != 0) {
-      return lastComparison;
+    if (isSetAmount()) {
+      lastComparison = TBaseHelper.compareTo(this.amount, typedOther.amount);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
     }
     return 0;
+  }
+
+  public _Fields fieldForId(int fieldId) {
+    return _Fields.findByThriftId(fieldId);
   }
 
   public void read(TProtocol iprot) throws TException {
@@ -446,43 +496,40 @@ public class Increment implements TBase<Increment._Fields>, java.io.Serializable
       if (field.type == TType.STOP) {
         break;
       }
-      _Fields fieldId = _Fields.findByThriftId(field.id);
-      if (fieldId == null) {
-        TProtocolUtil.skip(iprot, field.type);
-      } else {
-        switch (fieldId) {
-          case TABLE:
-            if (field.type == TType.STRING) {
-              this.table = iprot.readBinary();
-            } else {
-              TProtocolUtil.skip(iprot, field.type);
-            }
-            break;
-          case ROW:
-            if (field.type == TType.STRING) {
-              this.row = iprot.readBinary();
-            } else {
-              TProtocolUtil.skip(iprot, field.type);
-            }
-            break;
-          case COLUMN:
-            if (field.type == TType.STRING) {
-              this.column = iprot.readBinary();
-            } else {
-              TProtocolUtil.skip(iprot, field.type);
-            }
-            break;
-          case AMOUNT:
-            if (field.type == TType.I64) {
-              this.amount = iprot.readI64();
-              setAmountIsSet(true);
-            } else {
-              TProtocolUtil.skip(iprot, field.type);
-            }
-            break;
-        }
-        iprot.readFieldEnd();
+      switch (field.id) {
+        case 1: // TABLE
+          if (field.type == TType.STRING) {
+            this.table = iprot.readBinary();
+          } else {
+            TProtocolUtil.skip(iprot, field.type);
+          }
+          break;
+        case 2: // ROW
+          if (field.type == TType.STRING) {
+            this.row = iprot.readBinary();
+          } else {
+            TProtocolUtil.skip(iprot, field.type);
+          }
+          break;
+        case 3: // COLUMN
+          if (field.type == TType.STRING) {
+            this.column = iprot.readBinary();
+          } else {
+            TProtocolUtil.skip(iprot, field.type);
+          }
+          break;
+        case 4: // AMOUNT
+          if (field.type == TType.I64) {
+            this.amount = iprot.readI64();
+            setAmountIsSet(true);
+          } else {
+            TProtocolUtil.skip(iprot, field.type);
+          }
+          break;
+        default:
+          TProtocolUtil.skip(iprot, field.type);
       }
+      iprot.readFieldEnd();
     }
     iprot.readStructEnd();
 

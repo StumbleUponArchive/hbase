@@ -21,6 +21,7 @@ import javax.management.MBeanServer;
 import javax.management.ObjectName;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
@@ -119,10 +120,13 @@ public class TestThriftServerQueueICV extends TestCase {
    * do the right thing.
    * @throws Exception
    */
-  private static final byte[] tableA = Bytes.toBytes("tableA");
-  private static final byte[] tableB = Bytes.toBytes("tableB");
-  private static final byte[] row1 = Bytes.toBytes("row1");
-  private static final byte[] row2 = Bytes.toBytes("row2");
+  private static ByteBuffer $bb(String s) {
+    return ByteBuffer.wrap(Bytes.toBytes(s));
+  }
+  private static final ByteBuffer tableA = $bb("tableA");
+  private static final ByteBuffer tableB = $bb("tableB");
+  private static final ByteBuffer row1 = $bb("row1");
+  private static final ByteBuffer row2 = $bb("row2");
 
   private static final byte[] family1 = Bytes.toBytes("family1");
   private static final byte[] qual1 = Bytes.toBytes("qual1");
@@ -134,8 +138,8 @@ public class TestThriftServerQueueICV extends TestCase {
 
   public void testCallablesDoRightThing() throws Exception {
     List<Increment> incrs = new ArrayList<Increment>();
-    incrs.add(new Increment(tableA, row1, Bytes.add(family1, colon, qual1), 1));
-    incrs.add(new Increment(tableB, row2, Bytes.add(family2, colon, qual2), 1000));
+    incrs.add(new Increment(tableA, row1, ByteBuffer.wrap(Bytes.add(family1, colon, qual1)), 1));
+    incrs.add(new Increment(tableB, row2, ByteBuffer.wrap(Bytes.add(family2, colon, qual2)), 1000));
 
     // allow the queued things to proceed.
     when(queue.size()).thenReturn(1);
@@ -158,18 +162,19 @@ public class TestThriftServerQueueICV extends TestCase {
     c.call(); // this runs "live" code
 
     // verify on the htm (htable mock).
+    // row1.array() is a hax but i know that the backing array is sized right.
     verify(htm).incrementColumnValue(
-        row1, family1, qual1, 1);
+        row1.array(), family1, qual1, 1);
     verify(htm).incrementColumnValue(
-        row2, family2, qual2, 1000);
+        row2.array(), family2, qual2, 1000);
   }
 
   public void testCallableErrorHandling() throws Exception {
     List<Increment> incrs = new ArrayList<Increment>();
-    incrs.add(new Increment(tableA, row1, Bytes.add(family1, colon, qual1), 1));
-    incrs.add(new Increment(tableA, row2, Bytes.add(family1, colon, qual1), 1));
-    incrs.add(new Increment(tableB, row1, Bytes.add(family2, colon, qual2), 1000));
-    incrs.add(new Increment(tableB, row2, Bytes.add(family2, colon, qual2), 1000));
+    incrs.add(new Increment(tableA, row1, ByteBuffer.wrap(Bytes.add(family1, colon, qual1)), 1));
+    incrs.add(new Increment(tableA, row2, ByteBuffer.wrap(Bytes.add(family1, colon, qual1)), 1));
+    incrs.add(new Increment(tableB, row1, ByteBuffer.wrap(Bytes.add(family2, colon, qual2)), 1000));
+    incrs.add(new Increment(tableB, row2, ByteBuffer.wrap(Bytes.add(family2, colon, qual2)), 1000));
 
     when(queue.size()).thenReturn(1);
     handler = spy(handler);

@@ -135,6 +135,14 @@
 
   <repositories>
     <repository>
+      <id>apache release</id>
+      <url>https://repository.apache.org/content/repositories/releases/</url>
+    </repository>
+    <repository>
+       <id>Cloudera</id>
+       <url>https://repository.cloudera.com/content/repositories/releases/</url>
+    </repository>
+    <repository>
       <id>temp-thrift</id>
       <name>Thrift 0.2.0</name>
       <url>http://people.apache.org/~rawson/repo/</url>
@@ -181,10 +189,6 @@
     <repository>
       <id>powermock-repo</id>
       <url>http://powermock.googlecode.com/svn/repo/</url>
-   </repository>
-   <repository>
-      <id>Cloudera</id>
-      <url>https://repository.cloudera.com/content/repositories/releases/</url>
    </repository>
   </repositories>
 
@@ -485,7 +489,7 @@
     <protobuf.version>2.3.0</protobuf.version>
     <slf4j.version>1.5.8</slf4j.version><!-- newer version available -->
     <stax-api.version>1.0.1</stax-api.version>
-    <thrift.version>0.2.0</thrift.version><!-- newer version available -->
+    <thrift.version>0.5.0</thrift.version><!-- newer version available -->
     <zookeeper.version>3.3.2</zookeeper.version>
     <powermock.version>1.4</powermock.version>
 
@@ -598,8 +602,8 @@
       </exclusions>
     </dependency>
     <dependency>
-      <groupId>org.apache.thrift</groupId>
-      <artifactId>thrift</artifactId>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>libthrift</artifactId>
       <version>${thrift.version}</version>
       <exclusions>
         <exclusion>
@@ -762,7 +766,7 @@
       <version>${commons-math.version}</version>
       <scope>test</scope>
     </dependency>
-     <dependency>
+    <dependency>
       <groupId>com.cloudera.hadoop</groupId>
       <artifactId>hadoop-test</artifactId>
       <version>${hadoop.version}</version>

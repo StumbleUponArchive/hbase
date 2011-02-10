@@ -15,19 +15,22 @@ import java.util.HashSet;
 import java.util.EnumSet;
 import java.util.Collections;
 import java.util.BitSet;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.thrift.*;
+import org.apache.thrift.async.*;
 import org.apache.thrift.meta_data.*;
+import org.apache.thrift.transport.*;
 import org.apache.thrift.protocol.*;
 
 /**
  * An AlreadyExists exceptions signals that a table with the specified
  * name already exists
  */
-public class AlreadyExists extends Exception implements TBase<AlreadyExists._Fields>, java.io.Serializable, Cloneable, Comparable<AlreadyExists> {
+public class AlreadyExists extends Exception implements TBase<AlreadyExists, AlreadyExists._Fields>, java.io.Serializable, Cloneable {
   private static final TStruct STRUCT_DESC = new TStruct("AlreadyExists");
 
   private static final TField MESSAGE_FIELD_DESC = new TField("message", TType.STRING, (short)1);
@@ -38,12 +41,10 @@ public class AlreadyExists extends Exception implements TBase<AlreadyExists._Fie
   public enum _Fields implements TFieldIdEnum {
     MESSAGE((short)1, "message");
 
-    private static final Map<Integer, _Fields> byId = new HashMap<Integer, _Fields>();
     private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
 
     static {
       for (_Fields field : EnumSet.allOf(_Fields.class)) {
-        byId.put((int)field._thriftId, field);
         byName.put(field.getFieldName(), field);
       }
     }
@@ -52,7 +53,12 @@ public class AlreadyExists extends Exception implements TBase<AlreadyExists._Fie
      * Find the _Fields constant that matches fieldId, or null if its not found.
      */
     public static _Fields findByThriftId(int fieldId) {
-      return byId.get(fieldId);
+      switch(fieldId) {
+        case 1: // MESSAGE
+          return MESSAGE;
+        default:
+          return null;
+      }
     }
 
     /**
@@ -91,12 +97,12 @@ public class AlreadyExists extends Exception implements TBase<AlreadyExists._Fie
 
   // isset id assignments
 
-  public static final Map<_Fields, FieldMetaData> metaDataMap = Collections.unmodifiableMap(new EnumMap<_Fields, FieldMetaData>(_Fields.class) {{
-    put(_Fields.MESSAGE, new FieldMetaData("message", TFieldRequirementType.DEFAULT,
-        new FieldValueMetaData(TType.STRING)));
-  }});
-
+  public static final Map<_Fields, FieldMetaData> metaDataMap;
   static {
+    Map<_Fields, FieldMetaData> tmpMap = new EnumMap<_Fields, FieldMetaData>(_Fields.class);
+    tmpMap.put(_Fields.MESSAGE, new FieldMetaData("message", TFieldRequirementType.DEFAULT,
+        new FieldValueMetaData(TType.STRING)));
+    metaDataMap = Collections.unmodifiableMap(tmpMap);
     FieldMetaData.addStructMetaDataMap(AlreadyExists.class, metaDataMap);
   }
 
@@ -123,9 +129,9 @@ public class AlreadyExists extends Exception implements TBase<AlreadyExists._Fie
     return new AlreadyExists(this);
   }
 
-  @Deprecated
-  public AlreadyExists clone() {
-    return new AlreadyExists(this);
+  @Override
+  public void clear() {
+    this.message = null;
   }
 
   public String getMessage() {
@@ -165,10 +171,6 @@ public class AlreadyExists extends Exception implements TBase<AlreadyExists._Fie
     }
   }
 
-  public void setFieldValue(int fieldID, Object value) {
-    setFieldValue(_Fields.findByThriftIdOrThrow(fieldID), value);
-  }
-
   public Object getFieldValue(_Fields field) {
     switch (field) {
     case MESSAGE:
@@ -178,21 +180,17 @@ public class AlreadyExists extends Exception implements TBase<AlreadyExists._Fie
     throw new IllegalStateException();
   }
 
-  public Object getFieldValue(int fieldId) {
-    return getFieldValue(_Fields.findByThriftIdOrThrow(fieldId));
-  }
-
   /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
   public boolean isSet(_Fields field) {
+    if (field == null) {
+      throw new IllegalArgumentException();
+    }
+
     switch (field) {
     case MESSAGE:
       return isSetMessage();
     }
     throw new IllegalStateException();
-  }
-
-  public boolean isSet(int fieldID) {
-    return isSet(_Fields.findByThriftIdOrThrow(fieldID));
   }
 
   @Override
@@ -233,15 +231,21 @@ public class AlreadyExists extends Exception implements TBase<AlreadyExists._Fie
     int lastComparison = 0;
     AlreadyExists typedOther = (AlreadyExists)other;
 
-    lastComparison = Boolean.valueOf(isSetMessage()).compareTo(isSetMessage());
+    lastComparison = Boolean.valueOf(isSetMessage()).compareTo(typedOther.isSetMessage());
     if (lastComparison != 0) {
       return lastComparison;
     }
-    lastComparison = TBaseHelper.compareTo(message, typedOther.message);
-    if (lastComparison != 0) {
-      return lastComparison;
+    if (isSetMessage()) {
+      lastComparison = TBaseHelper.compareTo(this.message, typedOther.message);
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
     }
     return 0;
+  }
+
+  public _Fields fieldForId(int fieldId) {
+    return _Fields.findByThriftId(fieldId);
   }
 
   public void read(TProtocol iprot) throws TException {
@@ -253,21 +257,18 @@ public class AlreadyExists extends Exception implements TBase<AlreadyExists._Fie
       if (field.type == TType.STOP) {
         break;
       }
-      _Fields fieldId = _Fields.findByThriftId(field.id);
-      if (fieldId == null) {
-        TProtocolUtil.skip(iprot, field.type);
-      } else {
-        switch (fieldId) {
-          case MESSAGE:
-            if (field.type == TType.STRING) {
-              this.message = iprot.readString();
-            } else {
-              TProtocolUtil.skip(iprot, field.type);
-            }
-            break;
-        }
-        iprot.readFieldEnd();
+      switch (field.id) {
+        case 1: // MESSAGE
+          if (field.type == TType.STRING) {
+            this.message = iprot.readString();
+          } else {
+            TProtocolUtil.skip(iprot, field.type);
+          }
+          break;
+        default:
+          TProtocolUtil.skip(iprot, field.type);
       }
+      iprot.readFieldEnd();
     }
     iprot.readStructEnd();
 
