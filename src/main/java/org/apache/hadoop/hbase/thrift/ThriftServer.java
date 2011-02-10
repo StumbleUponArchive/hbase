@@ -66,6 +66,7 @@ import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Row;
 import org.apache.hadoop.hbase.client.Scan;
 import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.filter.PrefixFilter;
@@ -868,20 +869,32 @@ public class ThriftServer {
                                         List<byte[]> rows) throws TException, IOError {
       try {
         HTable table = getTable(tableName);
-        List<TRowResult> results = new ArrayList<TRowResult>(rows.size());
 
-        // TODO parallel get instead of 1 at a time.
+        byte [][] famAndQual = KeyValue.parseColumn(column);
+
+        List<Row> gets = new ArrayList<Row>(rows.size());
         for (byte[] row : rows) {
-          final Get get = new Get(row);
-          get.addColumn(column);
-          Result res = table.get(get);
-
-          if (res != null && !res.isEmpty()) {
-            results.addAll(ThriftUtilities.rowResultFromHBase(res));
+          Get g = new Get(row);
+          if (famAndQual.length == 1) {
+            g.addFamily(famAndQual[0]);
+          } else {
+            g.addColumn(famAndQual[0], famAndQual[1]);
           }
+          gets.add(g);
         }
-        return results;
+
+        Object[] results = table.batch(gets);
+
+        Result[] results1 = new Result[results.length];
+        int i=0;
+        for( Object r : results) {
+          results1[i++] = (Result)r;
+        }
+
+        return ThriftUtilities.rowResultFromHBase(results1);
       } catch (IOException e) {
+        throw new IOError(e.getMessage());
+      } catch (InterruptedException e) {
         throw new IOError(e.getMessage());
       }
     }
