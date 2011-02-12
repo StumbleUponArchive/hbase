@@ -780,13 +780,6 @@ service Hbase {
                                throws (1:IOError io)
 
   /**
-   * Do an async series of atomic increments.
-   *
-   * @param increments a list of increments to apply
-   */
-  oneway void asyncAtomicIncrements(1:list<Increment> increments)
-
-  /**
    * Submit a series of updates to be processed. If the return value
    * is true, then it worked and you can forget. If the return value
    * is FALSE then there was a failure and none of the increments were

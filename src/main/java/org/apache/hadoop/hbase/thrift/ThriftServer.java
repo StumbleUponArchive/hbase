@@ -814,34 +814,6 @@ public class ThriftServer {
     }
 
     @Override
-    public void asyncAtomicIncrements(List<Increment> increments) throws TException {
-      int failures = 0;
-      for(Increment incr : increments) {
-        try {
-          HTable table = getTable(incr.getTable());
-          byte [][]famAndQf = KeyValue.parseColumn(incr.getColumn());
-          if (famAndQf.length != 2)
-            throw new IOException("Bad column: " + Bytes.toString(incr.getColumn()));
-          if (failures > 2) {
-            throw new IOException("Auto-Fail rest of ICVs");
-          }
-          table.incrementColumnValue(
-              incr.getRow(),
-              famAndQf[0],
-              famAndQf[1],
-              incr.getAmount());
-        } catch (IOException e) {
-          // log failure of increment
-          failures++;
-          LOG.error("FAILED_ICV: "
-          + Bytes.toString(incr.getTable()) + ", "
-          + Bytes.toStringBinary(incr.getRow()) + ", "
-          + Bytes.toStringBinary(incr.getColumn()) + ", "
-          + incr.getAmount());
-        }
-      }
-    }
-
     public boolean queueIncrementColumnValues(List<Increment> increments) throws TException {
       if (pool.getQueue().size() > failQueueSize) {
         ++ failedIncrements;
@@ -1047,7 +1019,7 @@ public class ThriftServer {
       try {
         HTable table = getTable(tableName);
         Scan scan = new Scan(getBytes(startRow));
-        scan.setTimeRange(Long.MIN_VALUE, timestamp);
+        scan.setTimeRange(timestamp, Long.MAX_VALUE);
         if(columns != null && columns.size() != 0) {
           for(ByteBuffer column : columns) {
             byte [][] famQf = KeyValue.parseColumn(getBytes(column));
