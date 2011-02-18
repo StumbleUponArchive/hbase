@@ -547,6 +547,48 @@ public class Hbase {
      */
     public boolean queueIncrementColumnValues(List<Increment> increments) throws TException;
 
+    /**
+     * Ignores startRow/stopRow in ScanSpec.
+     *
+     * endRows may be null/empty. If so, ensure spec.prefixScan=true
+     * or else you'll end up scanning the entire table.
+     *
+     * This call retrieves every row, so make sure to constrain your
+     * queries or else you will OOM thrift. There is a hard limit of
+     * X rows and you cant get more than that.
+     *
+     * @param spec
+     * @param startRows
+     * @param endRows
+     */
+    public List<TRowResult> parallelScan(ScanSpec spec, List<ByteBuffer> startRows, List<ByteBuffer> endRows) throws IOError, TException;
+
+    /**
+     * Execute a scan and return nRows worth in a single shot.
+     * If your scan has a start/end row you might get less rows.
+     * @param closeAfter close the scanner after this call
+     * regardless of if we are at the end or not.
+     *
+     * @param spec
+     * @param nRows
+     * @param closeAfter
+     */
+    public ScanResult scan(ScanSpec spec, int nRows, boolean closeAfter) throws IOError, TException;
+
+    /**
+     * If a previous scan returned hasMore=true, use
+     * the provided scannerId to continue the scan until
+     * you get hasMore=false.
+     *
+     * @param closeAfter close the scanner after this call
+     * regardless of if we are at the end or not.
+     *
+     * @param scannerId
+     * @param nRows
+     * @param closeAfter
+     */
+    public ScanResult scanMore(int scannerId, int nRows, boolean closeAfter) throws IOError, TException;
+
   }
 
   public interface AsyncIface {
@@ -630,6 +672,12 @@ public class Hbase {
     public void parallelGet(ByteBuffer tableName, ByteBuffer column, List<ByteBuffer> rows, AsyncMethodCallback<AsyncClient.parallelGet_call> resultHandler) throws TException;
 
     public void queueIncrementColumnValues(List<Increment> increments, AsyncMethodCallback<AsyncClient.queueIncrementColumnValues_call> resultHandler) throws TException;
+
+    public void parallelScan(ScanSpec spec, List<ByteBuffer> startRows, List<ByteBuffer> endRows, AsyncMethodCallback<AsyncClient.parallelScan_call> resultHandler) throws TException;
+
+    public void scan(ScanSpec spec, int nRows, boolean closeAfter, AsyncMethodCallback<AsyncClient.scan_call> resultHandler) throws TException;
+
+    public void scanMore(int scannerId, int nRows, boolean closeAfter, AsyncMethodCallback<AsyncClient.scanMore_call> resultHandler) throws TException;
 
   }
 
@@ -2273,6 +2321,129 @@ public class Hbase {
       throw new TApplicationException(TApplicationException.MISSING_RESULT, "queueIncrementColumnValues failed: unknown result");
     }
 
+    public List<TRowResult> parallelScan(ScanSpec spec, List<ByteBuffer> startRows, List<ByteBuffer> endRows) throws IOError, TException
+    {
+      send_parallelScan(spec, startRows, endRows);
+      return recv_parallelScan();
+    }
+
+    public void send_parallelScan(ScanSpec spec, List<ByteBuffer> startRows, List<ByteBuffer> endRows) throws TException
+    {
+      oprot_.writeMessageBegin(new TMessage("parallelScan", TMessageType.CALL, ++seqid_));
+      parallelScan_args args = new parallelScan_args();
+      args.setSpec(spec);
+      args.setStartRows(startRows);
+      args.setEndRows(endRows);
+      args.write(oprot_);
+      oprot_.writeMessageEnd();
+      oprot_.getTransport().flush();
+    }
+
+    public List<TRowResult> recv_parallelScan() throws IOError, TException
+    {
+      TMessage msg = iprot_.readMessageBegin();
+      if (msg.type == TMessageType.EXCEPTION) {
+        TApplicationException x = TApplicationException.read(iprot_);
+        iprot_.readMessageEnd();
+        throw x;
+      }
+      if (msg.seqid != seqid_) {
+        throw new TApplicationException(TApplicationException.BAD_SEQUENCE_ID, "parallelScan failed: out of sequence response");
+      }
+      parallelScan_result result = new parallelScan_result();
+      result.read(iprot_);
+      iprot_.readMessageEnd();
+      if (result.isSetSuccess()) {
+        return result.success;
+      }
+      if (result.io != null) {
+        throw result.io;
+      }
+      throw new TApplicationException(TApplicationException.MISSING_RESULT, "parallelScan failed: unknown result");
+    }
+
+    public ScanResult scan(ScanSpec spec, int nRows, boolean closeAfter) throws IOError, TException
+    {
+      send_scan(spec, nRows, closeAfter);
+      return recv_scan();
+    }
+
+    public void send_scan(ScanSpec spec, int nRows, boolean closeAfter) throws TException
+    {
+      oprot_.writeMessageBegin(new TMessage("scan", TMessageType.CALL, ++seqid_));
+      scan_args args = new scan_args();
+      args.setSpec(spec);
+      args.setNRows(nRows);
+      args.setCloseAfter(closeAfter);
+      args.write(oprot_);
+      oprot_.writeMessageEnd();
+      oprot_.getTransport().flush();
+    }
+
+    public ScanResult recv_scan() throws IOError, TException
+    {
+      TMessage msg = iprot_.readMessageBegin();
+      if (msg.type == TMessageType.EXCEPTION) {
+        TApplicationException x = TApplicationException.read(iprot_);
+        iprot_.readMessageEnd();
+        throw x;
+      }
+      if (msg.seqid != seqid_) {
+        throw new TApplicationException(TApplicationException.BAD_SEQUENCE_ID, "scan failed: out of sequence response");
+      }
+      scan_result result = new scan_result();
+      result.read(iprot_);
+      iprot_.readMessageEnd();
+      if (result.isSetSuccess()) {
+        return result.success;
+      }
+      if (result.io != null) {
+        throw result.io;
+      }
+      throw new TApplicationException(TApplicationException.MISSING_RESULT, "scan failed: unknown result");
+    }
+
+    public ScanResult scanMore(int scannerId, int nRows, boolean closeAfter) throws IOError, TException
+    {
+      send_scanMore(scannerId, nRows, closeAfter);
+      return recv_scanMore();
+    }
+
+    public void send_scanMore(int scannerId, int nRows, boolean closeAfter) throws TException
+    {
+      oprot_.writeMessageBegin(new TMessage("scanMore", TMessageType.CALL, ++seqid_));
+      scanMore_args args = new scanMore_args();
+      args.setScannerId(scannerId);
+      args.setNRows(nRows);
+      args.setCloseAfter(closeAfter);
+      args.write(oprot_);
+      oprot_.writeMessageEnd();
+      oprot_.getTransport().flush();
+    }
+
+    public ScanResult recv_scanMore() throws IOError, TException
+    {
+      TMessage msg = iprot_.readMessageBegin();
+      if (msg.type == TMessageType.EXCEPTION) {
+        TApplicationException x = TApplicationException.read(iprot_);
+        iprot_.readMessageEnd();
+        throw x;
+      }
+      if (msg.seqid != seqid_) {
+        throw new TApplicationException(TApplicationException.BAD_SEQUENCE_ID, "scanMore failed: out of sequence response");
+      }
+      scanMore_result result = new scanMore_result();
+      result.read(iprot_);
+      iprot_.readMessageEnd();
+      if (result.isSetSuccess()) {
+        return result.success;
+      }
+      if (result.io != null) {
+        throw result.io;
+      }
+      throw new TApplicationException(TApplicationException.MISSING_RESULT, "scanMore failed: unknown result");
+    }
+
   }
   public static class AsyncClient extends TAsyncClient implements AsyncIface {
     public static class Factory implements TAsyncClientFactory<AsyncClient> {
@@ -3714,6 +3885,117 @@ public class Hbase {
       }
     }
 
+    public void parallelScan(ScanSpec spec, List<ByteBuffer> startRows, List<ByteBuffer> endRows, AsyncMethodCallback<parallelScan_call> resultHandler) throws TException {
+      checkReady();
+      parallelScan_call method_call = new parallelScan_call(spec, startRows, endRows, resultHandler, this, protocolFactory, transport);
+      manager.call(method_call);
+    }
+
+    public static class parallelScan_call extends TAsyncMethodCall {
+      private ScanSpec spec;
+      private List<ByteBuffer> startRows;
+      private List<ByteBuffer> endRows;
+      public parallelScan_call(ScanSpec spec, List<ByteBuffer> startRows, List<ByteBuffer> endRows, AsyncMethodCallback<parallelScan_call> resultHandler, TAsyncClient client, TProtocolFactory protocolFactory, TNonblockingTransport transport) throws TException {
+        super(client, protocolFactory, transport, resultHandler, false);
+        this.spec = spec;
+        this.startRows = startRows;
+        this.endRows = endRows;
+      }
+
+      public void write_args(TProtocol prot) throws TException {
+        prot.writeMessageBegin(new TMessage("parallelScan", TMessageType.CALL, 0));
+        parallelScan_args args = new parallelScan_args();
+        args.setSpec(spec);
+        args.setStartRows(startRows);
+        args.setEndRows(endRows);
+        args.write(prot);
+        prot.writeMessageEnd();
+      }
+
+      public List<TRowResult> getResult() throws IOError, TException {
+        if (getState() != State.RESPONSE_READ) {
+          throw new IllegalStateException("Method call not finished!");
+        }
+        TMemoryInputTransport memoryTransport = new TMemoryInputTransport(getFrameBuffer().array());
+        TProtocol prot = client.getProtocolFactory().getProtocol(memoryTransport);
+        return (new Client(prot)).recv_parallelScan();
+      }
+    }
+
+    public void scan(ScanSpec spec, int nRows, boolean closeAfter, AsyncMethodCallback<scan_call> resultHandler) throws TException {
+      checkReady();
+      scan_call method_call = new scan_call(spec, nRows, closeAfter, resultHandler, this, protocolFactory, transport);
+      manager.call(method_call);
+    }
+
+    public static class scan_call extends TAsyncMethodCall {
+      private ScanSpec spec;
+      private int nRows;
+      private boolean closeAfter;
+      public scan_call(ScanSpec spec, int nRows, boolean closeAfter, AsyncMethodCallback<scan_call> resultHandler, TAsyncClient client, TProtocolFactory protocolFactory, TNonblockingTransport transport) throws TException {
+        super(client, protocolFactory, transport, resultHandler, false);
+        this.spec = spec;
+        this.nRows = nRows;
+        this.closeAfter = closeAfter;
+      }
+
+      public void write_args(TProtocol prot) throws TException {
+        prot.writeMessageBegin(new TMessage("scan", TMessageType.CALL, 0));
+        scan_args args = new scan_args();
+        args.setSpec(spec);
+        args.setNRows(nRows);
+        args.setCloseAfter(closeAfter);
+        args.write(prot);
+        prot.writeMessageEnd();
+      }
+
+      public ScanResult getResult() throws IOError, TException {
+        if (getState() != State.RESPONSE_READ) {
+          throw new IllegalStateException("Method call not finished!");
+        }
+        TMemoryInputTransport memoryTransport = new TMemoryInputTransport(getFrameBuffer().array());
+        TProtocol prot = client.getProtocolFactory().getProtocol(memoryTransport);
+        return (new Client(prot)).recv_scan();
+      }
+    }
+
+    public void scanMore(int scannerId, int nRows, boolean closeAfter, AsyncMethodCallback<scanMore_call> resultHandler) throws TException {
+      checkReady();
+      scanMore_call method_call = new scanMore_call(scannerId, nRows, closeAfter, resultHandler, this, protocolFactory, transport);
+      manager.call(method_call);
+    }
+
+    public static class scanMore_call extends TAsyncMethodCall {
+      private int scannerId;
+      private int nRows;
+      private boolean closeAfter;
+      public scanMore_call(int scannerId, int nRows, boolean closeAfter, AsyncMethodCallback<scanMore_call> resultHandler, TAsyncClient client, TProtocolFactory protocolFactory, TNonblockingTransport transport) throws TException {
+        super(client, protocolFactory, transport, resultHandler, false);
+        this.scannerId = scannerId;
+        this.nRows = nRows;
+        this.closeAfter = closeAfter;
+      }
+
+      public void write_args(TProtocol prot) throws TException {
+        prot.writeMessageBegin(new TMessage("scanMore", TMessageType.CALL, 0));
+        scanMore_args args = new scanMore_args();
+        args.setScannerId(scannerId);
+        args.setNRows(nRows);
+        args.setCloseAfter(closeAfter);
+        args.write(prot);
+        prot.writeMessageEnd();
+      }
+
+      public ScanResult getResult() throws IOError, TException {
+        if (getState() != State.RESPONSE_READ) {
+          throw new IllegalStateException("Method call not finished!");
+        }
+        TMemoryInputTransport memoryTransport = new TMemoryInputTransport(getFrameBuffer().array());
+        TProtocol prot = client.getProtocolFactory().getProtocol(memoryTransport);
+        return (new Client(prot)).recv_scanMore();
+      }
+    }
+
   }
 
   public static class Processor implements TProcessor {
@@ -3761,6 +4043,9 @@ public class Hbase {
       processMap_.put("scannerClose", new scannerClose());
       processMap_.put("parallelGet", new parallelGet());
       processMap_.put("queueIncrementColumnValues", new queueIncrementColumnValues());
+      processMap_.put("parallelScan", new parallelScan());
+      processMap_.put("scan", new scan());
+      processMap_.put("scanMore", new scanMore());
     }
 
     protected static interface ProcessFunction {
@@ -5317,6 +5602,120 @@ public class Hbase {
         result.success = iface_.queueIncrementColumnValues(args.increments);
         result.setSuccessIsSet(true);
         oprot.writeMessageBegin(new TMessage("queueIncrementColumnValues", TMessageType.REPLY, seqid));
+        result.write(oprot);
+        oprot.writeMessageEnd();
+        oprot.getTransport().flush();
+      }
+
+    }
+
+    private class parallelScan implements ProcessFunction {
+      public void process(int seqid, TProtocol iprot, TProtocol oprot) throws TException
+      {
+        parallelScan_args args = new parallelScan_args();
+        try {
+          args.read(iprot);
+        } catch (TProtocolException e) {
+          iprot.readMessageEnd();
+          TApplicationException x = new TApplicationException(TApplicationException.PROTOCOL_ERROR, e.getMessage());
+          oprot.writeMessageBegin(new TMessage("parallelScan", TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        iprot.readMessageEnd();
+        parallelScan_result result = new parallelScan_result();
+        try {
+          result.success = iface_.parallelScan(args.spec, args.startRows, args.endRows);
+        } catch (IOError io) {
+          result.io = io;
+        } catch (Throwable th) {
+          LOGGER.error("Internal error processing parallelScan", th);
+          TApplicationException x = new TApplicationException(TApplicationException.INTERNAL_ERROR, "Internal error processing parallelScan");
+          oprot.writeMessageBegin(new TMessage("parallelScan", TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        oprot.writeMessageBegin(new TMessage("parallelScan", TMessageType.REPLY, seqid));
+        result.write(oprot);
+        oprot.writeMessageEnd();
+        oprot.getTransport().flush();
+      }
+
+    }
+
+    private class scan implements ProcessFunction {
+      public void process(int seqid, TProtocol iprot, TProtocol oprot) throws TException
+      {
+        scan_args args = new scan_args();
+        try {
+          args.read(iprot);
+        } catch (TProtocolException e) {
+          iprot.readMessageEnd();
+          TApplicationException x = new TApplicationException(TApplicationException.PROTOCOL_ERROR, e.getMessage());
+          oprot.writeMessageBegin(new TMessage("scan", TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        iprot.readMessageEnd();
+        scan_result result = new scan_result();
+        try {
+          result.success = iface_.scan(args.spec, args.nRows, args.closeAfter);
+        } catch (IOError io) {
+          result.io = io;
+        } catch (Throwable th) {
+          LOGGER.error("Internal error processing scan", th);
+          TApplicationException x = new TApplicationException(TApplicationException.INTERNAL_ERROR, "Internal error processing scan");
+          oprot.writeMessageBegin(new TMessage("scan", TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        oprot.writeMessageBegin(new TMessage("scan", TMessageType.REPLY, seqid));
+        result.write(oprot);
+        oprot.writeMessageEnd();
+        oprot.getTransport().flush();
+      }
+
+    }
+
+    private class scanMore implements ProcessFunction {
+      public void process(int seqid, TProtocol iprot, TProtocol oprot) throws TException
+      {
+        scanMore_args args = new scanMore_args();
+        try {
+          args.read(iprot);
+        } catch (TProtocolException e) {
+          iprot.readMessageEnd();
+          TApplicationException x = new TApplicationException(TApplicationException.PROTOCOL_ERROR, e.getMessage());
+          oprot.writeMessageBegin(new TMessage("scanMore", TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        iprot.readMessageEnd();
+        scanMore_result result = new scanMore_result();
+        try {
+          result.success = iface_.scanMore(args.scannerId, args.nRows, args.closeAfter);
+        } catch (IOError io) {
+          result.io = io;
+        } catch (Throwable th) {
+          LOGGER.error("Internal error processing scanMore", th);
+          TApplicationException x = new TApplicationException(TApplicationException.INTERNAL_ERROR, "Internal error processing scanMore");
+          oprot.writeMessageBegin(new TMessage("scanMore", TMessageType.EXCEPTION, seqid));
+          x.write(oprot);
+          oprot.writeMessageEnd();
+          oprot.getTransport().flush();
+          return;
+        }
+        oprot.writeMessageBegin(new TMessage("scanMore", TMessageType.REPLY, seqid));
         result.write(oprot);
         oprot.writeMessageEnd();
         oprot.getTransport().flush();
@@ -8816,13 +9215,13 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list9 = iprot.readListBegin();
-                this.success = new ArrayList<ByteBuffer>(_list9.size);
-                for (int _i10 = 0; _i10 < _list9.size; ++_i10)
+                TList _list17 = iprot.readListBegin();
+                this.success = new ArrayList<ByteBuffer>(_list17.size);
+                for (int _i18 = 0; _i18 < _list17.size; ++_i18)
                 {
-                  ByteBuffer _elem11;
-                  _elem11 = iprot.readBinary();
-                  this.success.add(_elem11);
+                  ByteBuffer _elem19;
+                  _elem19 = iprot.readBinary();
+                  this.success.add(_elem19);
                 }
                 iprot.readListEnd();
               }
@@ -8856,9 +9255,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.success.size()));
-          for (ByteBuffer _iter12 : this.success)
+          for (ByteBuffer _iter20 : this.success)
           {
-            oprot.writeBinary(_iter12);
+            oprot.writeBinary(_iter20);
           }
           oprot.writeListEnd();
         }
@@ -9530,16 +9929,16 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.MAP) {
               {
-                TMap _map13 = iprot.readMapBegin();
-                this.success = new HashMap<ByteBuffer,ColumnDescriptor>(2*_map13.size);
-                for (int _i14 = 0; _i14 < _map13.size; ++_i14)
+                TMap _map21 = iprot.readMapBegin();
+                this.success = new HashMap<ByteBuffer,ColumnDescriptor>(2*_map21.size);
+                for (int _i22 = 0; _i22 < _map21.size; ++_i22)
                 {
-                  ByteBuffer _key15;
-                  ColumnDescriptor _val16;
-                  _key15 = iprot.readBinary();
-                  _val16 = new ColumnDescriptor();
-                  _val16.read(iprot);
-                  this.success.put(_key15, _val16);
+                  ByteBuffer _key23;
+                  ColumnDescriptor _val24;
+                  _key23 = iprot.readBinary();
+                  _val24 = new ColumnDescriptor();
+                  _val24.read(iprot);
+                  this.success.put(_key23, _val24);
                 }
                 iprot.readMapEnd();
               }
@@ -9573,10 +9972,10 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeMapBegin(new TMap(TType.STRING, TType.STRUCT, this.success.size()));
-          for (Map.Entry<ByteBuffer, ColumnDescriptor> _iter17 : this.success.entrySet())
+          for (Map.Entry<ByteBuffer, ColumnDescriptor> _iter25 : this.success.entrySet())
           {
-            oprot.writeBinary(_iter17.getKey());
-            _iter17.getValue().write(oprot);
+            oprot.writeBinary(_iter25.getKey());
+            _iter25.getValue().write(oprot);
           }
           oprot.writeMapEnd();
         }
@@ -10243,14 +10642,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list18 = iprot.readListBegin();
-                this.success = new ArrayList<TRegionInfo>(_list18.size);
-                for (int _i19 = 0; _i19 < _list18.size; ++_i19)
+                TList _list26 = iprot.readListBegin();
+                this.success = new ArrayList<TRegionInfo>(_list26.size);
+                for (int _i27 = 0; _i27 < _list26.size; ++_i27)
                 {
-                  TRegionInfo _elem20;
-                  _elem20 = new TRegionInfo();
-                  _elem20.read(iprot);
-                  this.success.add(_elem20);
+                  TRegionInfo _elem28;
+                  _elem28 = new TRegionInfo();
+                  _elem28.read(iprot);
+                  this.success.add(_elem28);
                 }
                 iprot.readListEnd();
               }
@@ -10284,9 +10683,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRegionInfo _iter21 : this.success)
+          for (TRegionInfo _iter29 : this.success)
           {
-            _iter21.write(oprot);
+            _iter29.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -10691,14 +11090,14 @@ public class Hbase {
           case 2: // COLUMN_FAMILIES
             if (field.type == TType.LIST) {
               {
-                TList _list22 = iprot.readListBegin();
-                this.columnFamilies = new ArrayList<ColumnDescriptor>(_list22.size);
-                for (int _i23 = 0; _i23 < _list22.size; ++_i23)
+                TList _list30 = iprot.readListBegin();
+                this.columnFamilies = new ArrayList<ColumnDescriptor>(_list30.size);
+                for (int _i31 = 0; _i31 < _list30.size; ++_i31)
                 {
-                  ColumnDescriptor _elem24;
-                  _elem24 = new ColumnDescriptor();
-                  _elem24.read(iprot);
-                  this.columnFamilies.add(_elem24);
+                  ColumnDescriptor _elem32;
+                  _elem32 = new ColumnDescriptor();
+                  _elem32.read(iprot);
+                  this.columnFamilies.add(_elem32);
                 }
                 iprot.readListEnd();
               }
@@ -10730,9 +11129,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMN_FAMILIES_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.columnFamilies.size()));
-          for (ColumnDescriptor _iter25 : this.columnFamilies)
+          for (ColumnDescriptor _iter33 : this.columnFamilies)
           {
-            _iter25.write(oprot);
+            _iter33.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -12660,14 +13059,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list26 = iprot.readListBegin();
-                this.success = new ArrayList<TCell>(_list26.size);
-                for (int _i27 = 0; _i27 < _list26.size; ++_i27)
+                TList _list34 = iprot.readListBegin();
+                this.success = new ArrayList<TCell>(_list34.size);
+                for (int _i35 = 0; _i35 < _list34.size; ++_i35)
                 {
-                  TCell _elem28;
-                  _elem28 = new TCell();
-                  _elem28.read(iprot);
-                  this.success.add(_elem28);
+                  TCell _elem36;
+                  _elem36 = new TCell();
+                  _elem36.read(iprot);
+                  this.success.add(_elem36);
                 }
                 iprot.readListEnd();
               }
@@ -12701,9 +13100,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TCell _iter29 : this.success)
+          for (TCell _iter37 : this.success)
           {
-            _iter29.write(oprot);
+            _iter37.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -13691,14 +14090,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list30 = iprot.readListBegin();
-                this.success = new ArrayList<TCell>(_list30.size);
-                for (int _i31 = 0; _i31 < _list30.size; ++_i31)
+                TList _list38 = iprot.readListBegin();
+                this.success = new ArrayList<TCell>(_list38.size);
+                for (int _i39 = 0; _i39 < _list38.size; ++_i39)
                 {
-                  TCell _elem32;
-                  _elem32 = new TCell();
-                  _elem32.read(iprot);
-                  this.success.add(_elem32);
+                  TCell _elem40;
+                  _elem40 = new TCell();
+                  _elem40.read(iprot);
+                  this.success.add(_elem40);
                 }
                 iprot.readListEnd();
               }
@@ -13732,9 +14131,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TCell _iter33 : this.success)
+          for (TCell _iter41 : this.success)
           {
-            _iter33.write(oprot);
+            _iter41.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -14818,14 +15217,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list34 = iprot.readListBegin();
-                this.success = new ArrayList<TCell>(_list34.size);
-                for (int _i35 = 0; _i35 < _list34.size; ++_i35)
+                TList _list42 = iprot.readListBegin();
+                this.success = new ArrayList<TCell>(_list42.size);
+                for (int _i43 = 0; _i43 < _list42.size; ++_i43)
                 {
-                  TCell _elem36;
-                  _elem36 = new TCell();
-                  _elem36.read(iprot);
-                  this.success.add(_elem36);
+                  TCell _elem44;
+                  _elem44 = new TCell();
+                  _elem44.read(iprot);
+                  this.success.add(_elem44);
                 }
                 iprot.readListEnd();
               }
@@ -14859,9 +15258,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TCell _iter37 : this.success)
+          for (TCell _iter45 : this.success)
           {
-            _iter37.write(oprot);
+            _iter45.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -15639,14 +16038,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list38 = iprot.readListBegin();
-                this.success = new ArrayList<TRowResult>(_list38.size);
-                for (int _i39 = 0; _i39 < _list38.size; ++_i39)
+                TList _list46 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list46.size);
+                for (int _i47 = 0; _i47 < _list46.size; ++_i47)
                 {
-                  TRowResult _elem40;
-                  _elem40 = new TRowResult();
-                  _elem40.read(iprot);
-                  this.success.add(_elem40);
+                  TRowResult _elem48;
+                  _elem48 = new TRowResult();
+                  _elem48.read(iprot);
+                  this.success.add(_elem48);
                 }
                 iprot.readListEnd();
               }
@@ -15680,9 +16079,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter41 : this.success)
+          for (TRowResult _iter49 : this.success)
           {
-            _iter41.write(oprot);
+            _iter49.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -16185,13 +16584,13 @@ public class Hbase {
           case 3: // COLUMNS
             if (field.type == TType.LIST) {
               {
-                TList _list42 = iprot.readListBegin();
-                this.columns = new ArrayList<ByteBuffer>(_list42.size);
-                for (int _i43 = 0; _i43 < _list42.size; ++_i43)
+                TList _list50 = iprot.readListBegin();
+                this.columns = new ArrayList<ByteBuffer>(_list50.size);
+                for (int _i51 = 0; _i51 < _list50.size; ++_i51)
                 {
-                  ByteBuffer _elem44;
-                  _elem44 = iprot.readBinary();
-                  this.columns.add(_elem44);
+                  ByteBuffer _elem52;
+                  _elem52 = iprot.readBinary();
+                  this.columns.add(_elem52);
                 }
                 iprot.readListEnd();
               }
@@ -16228,9 +16627,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (ByteBuffer _iter45 : this.columns)
+          for (ByteBuffer _iter53 : this.columns)
           {
-            oprot.writeBinary(_iter45);
+            oprot.writeBinary(_iter53);
           }
           oprot.writeListEnd();
         }
@@ -16598,14 +16997,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list46 = iprot.readListBegin();
-                this.success = new ArrayList<TRowResult>(_list46.size);
-                for (int _i47 = 0; _i47 < _list46.size; ++_i47)
+                TList _list54 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list54.size);
+                for (int _i55 = 0; _i55 < _list54.size; ++_i55)
                 {
-                  TRowResult _elem48;
-                  _elem48 = new TRowResult();
-                  _elem48.read(iprot);
-                  this.success.add(_elem48);
+                  TRowResult _elem56;
+                  _elem56 = new TRowResult();
+                  _elem56.read(iprot);
+                  this.success.add(_elem56);
                 }
                 iprot.readListEnd();
               }
@@ -16639,9 +17038,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter49 : this.success)
+          for (TRowResult _iter57 : this.success)
           {
-            _iter49.write(oprot);
+            _iter57.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -17518,14 +17917,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list50 = iprot.readListBegin();
-                this.success = new ArrayList<TRowResult>(_list50.size);
-                for (int _i51 = 0; _i51 < _list50.size; ++_i51)
+                TList _list58 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list58.size);
+                for (int _i59 = 0; _i59 < _list58.size; ++_i59)
                 {
-                  TRowResult _elem52;
-                  _elem52 = new TRowResult();
-                  _elem52.read(iprot);
-                  this.success.add(_elem52);
+                  TRowResult _elem60;
+                  _elem60 = new TRowResult();
+                  _elem60.read(iprot);
+                  this.success.add(_elem60);
                 }
                 iprot.readListEnd();
               }
@@ -17559,9 +17958,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter53 : this.success)
+          for (TRowResult _iter61 : this.success)
           {
-            _iter53.write(oprot);
+            _iter61.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -18136,13 +18535,13 @@ public class Hbase {
           case 3: // COLUMNS
             if (field.type == TType.LIST) {
               {
-                TList _list54 = iprot.readListBegin();
-                this.columns = new ArrayList<ByteBuffer>(_list54.size);
-                for (int _i55 = 0; _i55 < _list54.size; ++_i55)
+                TList _list62 = iprot.readListBegin();
+                this.columns = new ArrayList<ByteBuffer>(_list62.size);
+                for (int _i63 = 0; _i63 < _list62.size; ++_i63)
                 {
-                  ByteBuffer _elem56;
-                  _elem56 = iprot.readBinary();
-                  this.columns.add(_elem56);
+                  ByteBuffer _elem64;
+                  _elem64 = iprot.readBinary();
+                  this.columns.add(_elem64);
                 }
                 iprot.readListEnd();
               }
@@ -18187,9 +18586,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (ByteBuffer _iter57 : this.columns)
+          for (ByteBuffer _iter65 : this.columns)
           {
-            oprot.writeBinary(_iter57);
+            oprot.writeBinary(_iter65);
           }
           oprot.writeListEnd();
         }
@@ -18564,14 +18963,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list58 = iprot.readListBegin();
-                this.success = new ArrayList<TRowResult>(_list58.size);
-                for (int _i59 = 0; _i59 < _list58.size; ++_i59)
+                TList _list66 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list66.size);
+                for (int _i67 = 0; _i67 < _list66.size; ++_i67)
                 {
-                  TRowResult _elem60;
-                  _elem60 = new TRowResult();
-                  _elem60.read(iprot);
-                  this.success.add(_elem60);
+                  TRowResult _elem68;
+                  _elem68 = new TRowResult();
+                  _elem68.read(iprot);
+                  this.success.add(_elem68);
                 }
                 iprot.readListEnd();
               }
@@ -18605,9 +19004,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter61 : this.success)
+          for (TRowResult _iter69 : this.success)
           {
-            _iter61.write(oprot);
+            _iter69.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -19012,13 +19411,13 @@ public class Hbase {
           case 2: // ROWS
             if (field.type == TType.LIST) {
               {
-                TList _list62 = iprot.readListBegin();
-                this.rows = new ArrayList<ByteBuffer>(_list62.size);
-                for (int _i63 = 0; _i63 < _list62.size; ++_i63)
+                TList _list70 = iprot.readListBegin();
+                this.rows = new ArrayList<ByteBuffer>(_list70.size);
+                for (int _i71 = 0; _i71 < _list70.size; ++_i71)
                 {
-                  ByteBuffer _elem64;
-                  _elem64 = iprot.readBinary();
-                  this.rows.add(_elem64);
+                  ByteBuffer _elem72;
+                  _elem72 = iprot.readBinary();
+                  this.rows.add(_elem72);
                 }
                 iprot.readListEnd();
               }
@@ -19050,9 +19449,9 @@ public class Hbase {
         oprot.writeFieldBegin(ROWS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.rows.size()));
-          for (ByteBuffer _iter65 : this.rows)
+          for (ByteBuffer _iter73 : this.rows)
           {
-            oprot.writeBinary(_iter65);
+            oprot.writeBinary(_iter73);
           }
           oprot.writeListEnd();
         }
@@ -19412,14 +19811,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list66 = iprot.readListBegin();
-                this.success = new ArrayList<TRowResult>(_list66.size);
-                for (int _i67 = 0; _i67 < _list66.size; ++_i67)
+                TList _list74 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list74.size);
+                for (int _i75 = 0; _i75 < _list74.size; ++_i75)
                 {
-                  TRowResult _elem68;
-                  _elem68 = new TRowResult();
-                  _elem68.read(iprot);
-                  this.success.add(_elem68);
+                  TRowResult _elem76;
+                  _elem76 = new TRowResult();
+                  _elem76.read(iprot);
+                  this.success.add(_elem76);
                 }
                 iprot.readListEnd();
               }
@@ -19453,9 +19852,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter69 : this.success)
+          for (TRowResult _iter77 : this.success)
           {
-            _iter69.write(oprot);
+            _iter77.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -19961,13 +20360,13 @@ public class Hbase {
           case 2: // ROWS
             if (field.type == TType.LIST) {
               {
-                TList _list70 = iprot.readListBegin();
-                this.rows = new ArrayList<ByteBuffer>(_list70.size);
-                for (int _i71 = 0; _i71 < _list70.size; ++_i71)
+                TList _list78 = iprot.readListBegin();
+                this.rows = new ArrayList<ByteBuffer>(_list78.size);
+                for (int _i79 = 0; _i79 < _list78.size; ++_i79)
                 {
-                  ByteBuffer _elem72;
-                  _elem72 = iprot.readBinary();
-                  this.rows.add(_elem72);
+                  ByteBuffer _elem80;
+                  _elem80 = iprot.readBinary();
+                  this.rows.add(_elem80);
                 }
                 iprot.readListEnd();
               }
@@ -19978,13 +20377,13 @@ public class Hbase {
           case 3: // COLUMNS
             if (field.type == TType.LIST) {
               {
-                TList _list73 = iprot.readListBegin();
-                this.columns = new ArrayList<ByteBuffer>(_list73.size);
-                for (int _i74 = 0; _i74 < _list73.size; ++_i74)
+                TList _list81 = iprot.readListBegin();
+                this.columns = new ArrayList<ByteBuffer>(_list81.size);
+                for (int _i82 = 0; _i82 < _list81.size; ++_i82)
                 {
-                  ByteBuffer _elem75;
-                  _elem75 = iprot.readBinary();
-                  this.columns.add(_elem75);
+                  ByteBuffer _elem83;
+                  _elem83 = iprot.readBinary();
+                  this.columns.add(_elem83);
                 }
                 iprot.readListEnd();
               }
@@ -20016,9 +20415,9 @@ public class Hbase {
         oprot.writeFieldBegin(ROWS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.rows.size()));
-          for (ByteBuffer _iter76 : this.rows)
+          for (ByteBuffer _iter84 : this.rows)
           {
-            oprot.writeBinary(_iter76);
+            oprot.writeBinary(_iter84);
           }
           oprot.writeListEnd();
         }
@@ -20028,9 +20427,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (ByteBuffer _iter77 : this.columns)
+          for (ByteBuffer _iter85 : this.columns)
           {
-            oprot.writeBinary(_iter77);
+            oprot.writeBinary(_iter85);
           }
           oprot.writeListEnd();
         }
@@ -20398,14 +20797,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list78 = iprot.readListBegin();
-                this.success = new ArrayList<TRowResult>(_list78.size);
-                for (int _i79 = 0; _i79 < _list78.size; ++_i79)
+                TList _list86 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list86.size);
+                for (int _i87 = 0; _i87 < _list86.size; ++_i87)
                 {
-                  TRowResult _elem80;
-                  _elem80 = new TRowResult();
-                  _elem80.read(iprot);
-                  this.success.add(_elem80);
+                  TRowResult _elem88;
+                  _elem88 = new TRowResult();
+                  _elem88.read(iprot);
+                  this.success.add(_elem88);
                 }
                 iprot.readListEnd();
               }
@@ -20439,9 +20838,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter81 : this.success)
+          for (TRowResult _iter89 : this.success)
           {
-            _iter81.write(oprot);
+            _iter89.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -20930,13 +21329,13 @@ public class Hbase {
           case 2: // ROWS
             if (field.type == TType.LIST) {
               {
-                TList _list82 = iprot.readListBegin();
-                this.rows = new ArrayList<ByteBuffer>(_list82.size);
-                for (int _i83 = 0; _i83 < _list82.size; ++_i83)
+                TList _list90 = iprot.readListBegin();
+                this.rows = new ArrayList<ByteBuffer>(_list90.size);
+                for (int _i91 = 0; _i91 < _list90.size; ++_i91)
                 {
-                  ByteBuffer _elem84;
-                  _elem84 = iprot.readBinary();
-                  this.rows.add(_elem84);
+                  ByteBuffer _elem92;
+                  _elem92 = iprot.readBinary();
+                  this.rows.add(_elem92);
                 }
                 iprot.readListEnd();
               }
@@ -20976,9 +21375,9 @@ public class Hbase {
         oprot.writeFieldBegin(ROWS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.rows.size()));
-          for (ByteBuffer _iter85 : this.rows)
+          for (ByteBuffer _iter93 : this.rows)
           {
-            oprot.writeBinary(_iter85);
+            oprot.writeBinary(_iter93);
           }
           oprot.writeListEnd();
         }
@@ -21345,14 +21744,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list86 = iprot.readListBegin();
-                this.success = new ArrayList<TRowResult>(_list86.size);
-                for (int _i87 = 0; _i87 < _list86.size; ++_i87)
+                TList _list94 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list94.size);
+                for (int _i95 = 0; _i95 < _list94.size; ++_i95)
                 {
-                  TRowResult _elem88;
-                  _elem88 = new TRowResult();
-                  _elem88.read(iprot);
-                  this.success.add(_elem88);
+                  TRowResult _elem96;
+                  _elem96 = new TRowResult();
+                  _elem96.read(iprot);
+                  this.success.add(_elem96);
                 }
                 iprot.readListEnd();
               }
@@ -21386,9 +21785,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter89 : this.success)
+          for (TRowResult _iter97 : this.success)
           {
-            _iter89.write(oprot);
+            _iter97.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -21966,13 +22365,13 @@ public class Hbase {
           case 2: // ROWS
             if (field.type == TType.LIST) {
               {
-                TList _list90 = iprot.readListBegin();
-                this.rows = new ArrayList<ByteBuffer>(_list90.size);
-                for (int _i91 = 0; _i91 < _list90.size; ++_i91)
+                TList _list98 = iprot.readListBegin();
+                this.rows = new ArrayList<ByteBuffer>(_list98.size);
+                for (int _i99 = 0; _i99 < _list98.size; ++_i99)
                 {
-                  ByteBuffer _elem92;
-                  _elem92 = iprot.readBinary();
-                  this.rows.add(_elem92);
+                  ByteBuffer _elem100;
+                  _elem100 = iprot.readBinary();
+                  this.rows.add(_elem100);
                 }
                 iprot.readListEnd();
               }
@@ -21983,13 +22382,13 @@ public class Hbase {
           case 3: // COLUMNS
             if (field.type == TType.LIST) {
               {
-                TList _list93 = iprot.readListBegin();
-                this.columns = new ArrayList<ByteBuffer>(_list93.size);
-                for (int _i94 = 0; _i94 < _list93.size; ++_i94)
+                TList _list101 = iprot.readListBegin();
+                this.columns = new ArrayList<ByteBuffer>(_list101.size);
+                for (int _i102 = 0; _i102 < _list101.size; ++_i102)
                 {
-                  ByteBuffer _elem95;
-                  _elem95 = iprot.readBinary();
-                  this.columns.add(_elem95);
+                  ByteBuffer _elem103;
+                  _elem103 = iprot.readBinary();
+                  this.columns.add(_elem103);
                 }
                 iprot.readListEnd();
               }
@@ -22029,9 +22428,9 @@ public class Hbase {
         oprot.writeFieldBegin(ROWS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.rows.size()));
-          for (ByteBuffer _iter96 : this.rows)
+          for (ByteBuffer _iter104 : this.rows)
           {
-            oprot.writeBinary(_iter96);
+            oprot.writeBinary(_iter104);
           }
           oprot.writeListEnd();
         }
@@ -22041,9 +22440,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (ByteBuffer _iter97 : this.columns)
+          for (ByteBuffer _iter105 : this.columns)
           {
-            oprot.writeBinary(_iter97);
+            oprot.writeBinary(_iter105);
           }
           oprot.writeListEnd();
         }
@@ -22418,14 +22817,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list98 = iprot.readListBegin();
-                this.success = new ArrayList<TRowResult>(_list98.size);
-                for (int _i99 = 0; _i99 < _list98.size; ++_i99)
+                TList _list106 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list106.size);
+                for (int _i107 = 0; _i107 < _list106.size; ++_i107)
                 {
-                  TRowResult _elem100;
-                  _elem100 = new TRowResult();
-                  _elem100.read(iprot);
-                  this.success.add(_elem100);
+                  TRowResult _elem108;
+                  _elem108 = new TRowResult();
+                  _elem108.read(iprot);
+                  this.success.add(_elem108);
                 }
                 iprot.readListEnd();
               }
@@ -22459,9 +22858,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter101 : this.success)
+          for (TRowResult _iter109 : this.success)
           {
-            _iter101.write(oprot);
+            _iter109.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -22964,14 +23363,14 @@ public class Hbase {
           case 3: // MUTATIONS
             if (field.type == TType.LIST) {
               {
-                TList _list102 = iprot.readListBegin();
-                this.mutations = new ArrayList<Mutation>(_list102.size);
-                for (int _i103 = 0; _i103 < _list102.size; ++_i103)
+                TList _list110 = iprot.readListBegin();
+                this.mutations = new ArrayList<Mutation>(_list110.size);
+                for (int _i111 = 0; _i111 < _list110.size; ++_i111)
                 {
-                  Mutation _elem104;
-                  _elem104 = new Mutation();
-                  _elem104.read(iprot);
-                  this.mutations.add(_elem104);
+                  Mutation _elem112;
+                  _elem112 = new Mutation();
+                  _elem112.read(iprot);
+                  this.mutations.add(_elem112);
                 }
                 iprot.readListEnd();
               }
@@ -23008,9 +23407,9 @@ public class Hbase {
         oprot.writeFieldBegin(MUTATIONS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.mutations.size()));
-          for (Mutation _iter105 : this.mutations)
+          for (Mutation _iter113 : this.mutations)
           {
-            _iter105.write(oprot);
+            _iter113.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -23971,14 +24370,14 @@ public class Hbase {
           case 3: // MUTATIONS
             if (field.type == TType.LIST) {
               {
-                TList _list106 = iprot.readListBegin();
-                this.mutations = new ArrayList<Mutation>(_list106.size);
-                for (int _i107 = 0; _i107 < _list106.size; ++_i107)
+                TList _list114 = iprot.readListBegin();
+                this.mutations = new ArrayList<Mutation>(_list114.size);
+                for (int _i115 = 0; _i115 < _list114.size; ++_i115)
                 {
-                  Mutation _elem108;
-                  _elem108 = new Mutation();
-                  _elem108.read(iprot);
-                  this.mutations.add(_elem108);
+                  Mutation _elem116;
+                  _elem116 = new Mutation();
+                  _elem116.read(iprot);
+                  this.mutations.add(_elem116);
                 }
                 iprot.readListEnd();
               }
@@ -24023,9 +24422,9 @@ public class Hbase {
         oprot.writeFieldBegin(MUTATIONS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.mutations.size()));
-          for (Mutation _iter109 : this.mutations)
+          for (Mutation _iter117 : this.mutations)
           {
-            _iter109.write(oprot);
+            _iter117.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -24811,14 +25210,14 @@ public class Hbase {
           case 2: // ROW_BATCHES
             if (field.type == TType.LIST) {
               {
-                TList _list110 = iprot.readListBegin();
-                this.rowBatches = new ArrayList<BatchMutation>(_list110.size);
-                for (int _i111 = 0; _i111 < _list110.size; ++_i111)
+                TList _list118 = iprot.readListBegin();
+                this.rowBatches = new ArrayList<BatchMutation>(_list118.size);
+                for (int _i119 = 0; _i119 < _list118.size; ++_i119)
                 {
-                  BatchMutation _elem112;
-                  _elem112 = new BatchMutation();
-                  _elem112.read(iprot);
-                  this.rowBatches.add(_elem112);
+                  BatchMutation _elem120;
+                  _elem120 = new BatchMutation();
+                  _elem120.read(iprot);
+                  this.rowBatches.add(_elem120);
                 }
                 iprot.readListEnd();
               }
@@ -24850,9 +25249,9 @@ public class Hbase {
         oprot.writeFieldBegin(ROW_BATCHES_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.rowBatches.size()));
-          for (BatchMutation _iter113 : this.rowBatches)
+          for (BatchMutation _iter121 : this.rowBatches)
           {
-            _iter113.write(oprot);
+            _iter121.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -25707,14 +26106,14 @@ public class Hbase {
           case 2: // ROW_BATCHES
             if (field.type == TType.LIST) {
               {
-                TList _list114 = iprot.readListBegin();
-                this.rowBatches = new ArrayList<BatchMutation>(_list114.size);
-                for (int _i115 = 0; _i115 < _list114.size; ++_i115)
+                TList _list122 = iprot.readListBegin();
+                this.rowBatches = new ArrayList<BatchMutation>(_list122.size);
+                for (int _i123 = 0; _i123 < _list122.size; ++_i123)
                 {
-                  BatchMutation _elem116;
-                  _elem116 = new BatchMutation();
-                  _elem116.read(iprot);
-                  this.rowBatches.add(_elem116);
+                  BatchMutation _elem124;
+                  _elem124 = new BatchMutation();
+                  _elem124.read(iprot);
+                  this.rowBatches.add(_elem124);
                 }
                 iprot.readListEnd();
               }
@@ -25754,9 +26153,9 @@ public class Hbase {
         oprot.writeFieldBegin(ROW_BATCHES_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.rowBatches.size()));
-          for (BatchMutation _iter117 : this.rowBatches)
+          for (BatchMutation _iter125 : this.rowBatches)
           {
-            _iter117.write(oprot);
+            _iter125.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -30926,13 +31325,13 @@ public class Hbase {
           case 3: // COLUMNS
             if (field.type == TType.LIST) {
               {
-                TList _list118 = iprot.readListBegin();
-                this.columns = new ArrayList<ByteBuffer>(_list118.size);
-                for (int _i119 = 0; _i119 < _list118.size; ++_i119)
+                TList _list126 = iprot.readListBegin();
+                this.columns = new ArrayList<ByteBuffer>(_list126.size);
+                for (int _i127 = 0; _i127 < _list126.size; ++_i127)
                 {
-                  ByteBuffer _elem120;
-                  _elem120 = iprot.readBinary();
-                  this.columns.add(_elem120);
+                  ByteBuffer _elem128;
+                  _elem128 = iprot.readBinary();
+                  this.columns.add(_elem128);
                 }
                 iprot.readListEnd();
               }
@@ -30969,9 +31368,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (ByteBuffer _iter121 : this.columns)
+          for (ByteBuffer _iter129 : this.columns)
           {
-            oprot.writeBinary(_iter121);
+            oprot.writeBinary(_iter129);
           }
           oprot.writeListEnd();
         }
@@ -31961,13 +32360,13 @@ public class Hbase {
           case 4: // COLUMNS
             if (field.type == TType.LIST) {
               {
-                TList _list122 = iprot.readListBegin();
-                this.columns = new ArrayList<ByteBuffer>(_list122.size);
-                for (int _i123 = 0; _i123 < _list122.size; ++_i123)
+                TList _list130 = iprot.readListBegin();
+                this.columns = new ArrayList<ByteBuffer>(_list130.size);
+                for (int _i131 = 0; _i131 < _list130.size; ++_i131)
                 {
-                  ByteBuffer _elem124;
-                  _elem124 = iprot.readBinary();
-                  this.columns.add(_elem124);
+                  ByteBuffer _elem132;
+                  _elem132 = iprot.readBinary();
+                  this.columns.add(_elem132);
                 }
                 iprot.readListEnd();
               }
@@ -32009,9 +32408,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (ByteBuffer _iter125 : this.columns)
+          for (ByteBuffer _iter133 : this.columns)
           {
-            oprot.writeBinary(_iter125);
+            oprot.writeBinary(_iter133);
           }
           oprot.writeListEnd();
         }
@@ -32895,13 +33294,13 @@ public class Hbase {
           case 3: // COLUMNS
             if (field.type == TType.LIST) {
               {
-                TList _list126 = iprot.readListBegin();
-                this.columns = new ArrayList<ByteBuffer>(_list126.size);
-                for (int _i127 = 0; _i127 < _list126.size; ++_i127)
+                TList _list134 = iprot.readListBegin();
+                this.columns = new ArrayList<ByteBuffer>(_list134.size);
+                for (int _i135 = 0; _i135 < _list134.size; ++_i135)
                 {
-                  ByteBuffer _elem128;
-                  _elem128 = iprot.readBinary();
-                  this.columns.add(_elem128);
+                  ByteBuffer _elem136;
+                  _elem136 = iprot.readBinary();
+                  this.columns.add(_elem136);
                 }
                 iprot.readListEnd();
               }
@@ -32938,9 +33337,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (ByteBuffer _iter129 : this.columns)
+          for (ByteBuffer _iter137 : this.columns)
           {
-            oprot.writeBinary(_iter129);
+            oprot.writeBinary(_iter137);
           }
           oprot.writeListEnd();
         }
@@ -33912,13 +34311,13 @@ public class Hbase {
           case 3: // COLUMNS
             if (field.type == TType.LIST) {
               {
-                TList _list130 = iprot.readListBegin();
-                this.columns = new ArrayList<ByteBuffer>(_list130.size);
-                for (int _i131 = 0; _i131 < _list130.size; ++_i131)
+                TList _list138 = iprot.readListBegin();
+                this.columns = new ArrayList<ByteBuffer>(_list138.size);
+                for (int _i139 = 0; _i139 < _list138.size; ++_i139)
                 {
-                  ByteBuffer _elem132;
-                  _elem132 = iprot.readBinary();
-                  this.columns.add(_elem132);
+                  ByteBuffer _elem140;
+                  _elem140 = iprot.readBinary();
+                  this.columns.add(_elem140);
                 }
                 iprot.readListEnd();
               }
@@ -33963,9 +34362,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (ByteBuffer _iter133 : this.columns)
+          for (ByteBuffer _iter141 : this.columns)
           {
-            oprot.writeBinary(_iter133);
+            oprot.writeBinary(_iter141);
           }
           oprot.writeListEnd();
         }
@@ -35046,13 +35445,13 @@ public class Hbase {
           case 4: // COLUMNS
             if (field.type == TType.LIST) {
               {
-                TList _list134 = iprot.readListBegin();
-                this.columns = new ArrayList<ByteBuffer>(_list134.size);
-                for (int _i135 = 0; _i135 < _list134.size; ++_i135)
+                TList _list142 = iprot.readListBegin();
+                this.columns = new ArrayList<ByteBuffer>(_list142.size);
+                for (int _i143 = 0; _i143 < _list142.size; ++_i143)
                 {
-                  ByteBuffer _elem136;
-                  _elem136 = iprot.readBinary();
-                  this.columns.add(_elem136);
+                  ByteBuffer _elem144;
+                  _elem144 = iprot.readBinary();
+                  this.columns.add(_elem144);
                 }
                 iprot.readListEnd();
               }
@@ -35102,9 +35501,9 @@ public class Hbase {
         oprot.writeFieldBegin(COLUMNS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.columns.size()));
-          for (ByteBuffer _iter137 : this.columns)
+          for (ByteBuffer _iter145 : this.columns)
           {
-            oprot.writeBinary(_iter137);
+            oprot.writeBinary(_iter145);
           }
           oprot.writeListEnd();
         }
@@ -36216,14 +36615,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list138 = iprot.readListBegin();
-                this.success = new ArrayList<TRowResult>(_list138.size);
-                for (int _i139 = 0; _i139 < _list138.size; ++_i139)
+                TList _list146 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list146.size);
+                for (int _i147 = 0; _i147 < _list146.size; ++_i147)
                 {
-                  TRowResult _elem140;
-                  _elem140 = new TRowResult();
-                  _elem140.read(iprot);
-                  this.success.add(_elem140);
+                  TRowResult _elem148;
+                  _elem148 = new TRowResult();
+                  _elem148.read(iprot);
+                  this.success.add(_elem148);
                 }
                 iprot.readListEnd();
               }
@@ -36265,9 +36664,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter141 : this.success)
+          for (TRowResult _iter149 : this.success)
           {
-            _iter141.write(oprot);
+            _iter149.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -37099,14 +37498,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list142 = iprot.readListBegin();
-                this.success = new ArrayList<TRowResult>(_list142.size);
-                for (int _i143 = 0; _i143 < _list142.size; ++_i143)
+                TList _list150 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list150.size);
+                for (int _i151 = 0; _i151 < _list150.size; ++_i151)
                 {
-                  TRowResult _elem144;
-                  _elem144 = new TRowResult();
-                  _elem144.read(iprot);
-                  this.success.add(_elem144);
+                  TRowResult _elem152;
+                  _elem152 = new TRowResult();
+                  _elem152.read(iprot);
+                  this.success.add(_elem152);
                 }
                 iprot.readListEnd();
               }
@@ -37148,9 +37547,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter145 : this.success)
+          for (TRowResult _iter153 : this.success)
           {
-            _iter145.write(oprot);
+            _iter153.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -38290,13 +38689,13 @@ public class Hbase {
           case 3: // ROWS
             if (field.type == TType.LIST) {
               {
-                TList _list146 = iprot.readListBegin();
-                this.rows = new ArrayList<ByteBuffer>(_list146.size);
-                for (int _i147 = 0; _i147 < _list146.size; ++_i147)
+                TList _list154 = iprot.readListBegin();
+                this.rows = new ArrayList<ByteBuffer>(_list154.size);
+                for (int _i155 = 0; _i155 < _list154.size; ++_i155)
                 {
-                  ByteBuffer _elem148;
-                  _elem148 = iprot.readBinary();
-                  this.rows.add(_elem148);
+                  ByteBuffer _elem156;
+                  _elem156 = iprot.readBinary();
+                  this.rows.add(_elem156);
                 }
                 iprot.readListEnd();
               }
@@ -38333,9 +38732,9 @@ public class Hbase {
         oprot.writeFieldBegin(ROWS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRING, this.rows.size()));
-          for (ByteBuffer _iter149 : this.rows)
+          for (ByteBuffer _iter157 : this.rows)
           {
-            oprot.writeBinary(_iter149);
+            oprot.writeBinary(_iter157);
           }
           oprot.writeListEnd();
         }
@@ -38703,14 +39102,14 @@ public class Hbase {
           case 0: // SUCCESS
             if (field.type == TType.LIST) {
               {
-                TList _list150 = iprot.readListBegin();
-                this.success = new ArrayList<TRowResult>(_list150.size);
-                for (int _i151 = 0; _i151 < _list150.size; ++_i151)
+                TList _list158 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list158.size);
+                for (int _i159 = 0; _i159 < _list158.size; ++_i159)
                 {
-                  TRowResult _elem152;
-                  _elem152 = new TRowResult();
-                  _elem152.read(iprot);
-                  this.success.add(_elem152);
+                  TRowResult _elem160;
+                  _elem160 = new TRowResult();
+                  _elem160.read(iprot);
+                  this.success.add(_elem160);
                 }
                 iprot.readListEnd();
               }
@@ -38744,9 +39143,9 @@ public class Hbase {
         oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
-          for (TRowResult _iter153 : this.success)
+          for (TRowResult _iter161 : this.success)
           {
-            _iter153.write(oprot);
+            _iter161.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -39041,14 +39440,14 @@ public class Hbase {
           case 1: // INCREMENTS
             if (field.type == TType.LIST) {
               {
-                TList _list154 = iprot.readListBegin();
-                this.increments = new ArrayList<Increment>(_list154.size);
-                for (int _i155 = 0; _i155 < _list154.size; ++_i155)
+                TList _list162 = iprot.readListBegin();
+                this.increments = new ArrayList<Increment>(_list162.size);
+                for (int _i163 = 0; _i163 < _list162.size; ++_i163)
                 {
-                  Increment _elem156;
-                  _elem156 = new Increment();
-                  _elem156.read(iprot);
-                  this.increments.add(_elem156);
+                  Increment _elem164;
+                  _elem164 = new Increment();
+                  _elem164.read(iprot);
+                  this.increments.add(_elem164);
                 }
                 iprot.readListEnd();
               }
@@ -39075,9 +39474,9 @@ public class Hbase {
         oprot.writeFieldBegin(INCREMENTS_FIELD_DESC);
         {
           oprot.writeListBegin(new TList(TType.STRUCT, this.increments.size()));
-          for (Increment _iter157 : this.increments)
+          for (Increment _iter165 : this.increments)
           {
-            _iter157.write(oprot);
+            _iter165.write(oprot);
           }
           oprot.writeListEnd();
         }
@@ -39378,6 +39777,2587 @@ public class Hbase {
 
       sb.append("success:");
       sb.append(this.success);
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws TException {
+      // check for required fields
+    }
+
+  }
+
+  public static class parallelScan_args implements TBase<parallelScan_args, parallelScan_args._Fields>, java.io.Serializable, Cloneable   {
+    private static final TStruct STRUCT_DESC = new TStruct("parallelScan_args");
+
+    private static final TField SPEC_FIELD_DESC = new TField("spec", TType.STRUCT, (short)1);
+    private static final TField START_ROWS_FIELD_DESC = new TField("startRows", TType.LIST, (short)2);
+    private static final TField END_ROWS_FIELD_DESC = new TField("endRows", TType.LIST, (short)3);
+
+    public ScanSpec spec;
+    public List<ByteBuffer> startRows;
+    public List<ByteBuffer> endRows;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements TFieldIdEnum {
+      SPEC((short)1, "spec"),
+      START_ROWS((short)2, "startRows"),
+      END_ROWS((short)3, "endRows");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 1: // SPEC
+            return SPEC;
+          case 2: // START_ROWS
+            return START_ROWS;
+          case 3: // END_ROWS
+            return END_ROWS;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+
+    public static final Map<_Fields, FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, FieldMetaData> tmpMap = new EnumMap<_Fields, FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.SPEC, new FieldMetaData("spec", TFieldRequirementType.DEFAULT,
+          new StructMetaData(TType.STRUCT, ScanSpec.class)));
+      tmpMap.put(_Fields.START_ROWS, new FieldMetaData("startRows", TFieldRequirementType.DEFAULT,
+          new ListMetaData(TType.LIST,
+              new FieldValueMetaData(TType.STRING              , "Text"))));
+      tmpMap.put(_Fields.END_ROWS, new FieldMetaData("endRows", TFieldRequirementType.DEFAULT,
+          new ListMetaData(TType.LIST,
+              new FieldValueMetaData(TType.STRING              , "Text"))));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      FieldMetaData.addStructMetaDataMap(parallelScan_args.class, metaDataMap);
+    }
+
+    public parallelScan_args() {
+    }
+
+    public parallelScan_args(
+      ScanSpec spec,
+      List<ByteBuffer> startRows,
+      List<ByteBuffer> endRows)
+    {
+      this();
+      this.spec = spec;
+      this.startRows = startRows;
+      this.endRows = endRows;
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public parallelScan_args(parallelScan_args other) {
+      if (other.isSetSpec()) {
+        this.spec = new ScanSpec(other.spec);
+      }
+      if (other.isSetStartRows()) {
+        List<ByteBuffer> __this__startRows = new ArrayList<ByteBuffer>();
+        for (ByteBuffer other_element : other.startRows) {
+          __this__startRows.add(other_element);
+        }
+        this.startRows = __this__startRows;
+      }
+      if (other.isSetEndRows()) {
+        List<ByteBuffer> __this__endRows = new ArrayList<ByteBuffer>();
+        for (ByteBuffer other_element : other.endRows) {
+          __this__endRows.add(other_element);
+        }
+        this.endRows = __this__endRows;
+      }
+    }
+
+    public parallelScan_args deepCopy() {
+      return new parallelScan_args(this);
+    }
+
+    @Override
+    public void clear() {
+      this.spec = null;
+      this.startRows = null;
+      this.endRows = null;
+    }
+
+    public ScanSpec getSpec() {
+      return this.spec;
+    }
+
+    public parallelScan_args setSpec(ScanSpec spec) {
+      this.spec = spec;
+      return this;
+    }
+
+    public void unsetSpec() {
+      this.spec = null;
+    }
+
+    /** Returns true if field spec is set (has been asigned a value) and false otherwise */
+    public boolean isSetSpec() {
+      return this.spec != null;
+    }
+
+    public void setSpecIsSet(boolean value) {
+      if (!value) {
+        this.spec = null;
+      }
+    }
+
+    public int getStartRowsSize() {
+      return (this.startRows == null) ? 0 : this.startRows.size();
+    }
+
+    public java.util.Iterator<ByteBuffer> getStartRowsIterator() {
+      return (this.startRows == null) ? null : this.startRows.iterator();
+    }
+
+    public void addToStartRows(ByteBuffer elem) {
+      if (this.startRows == null) {
+        this.startRows = new ArrayList<ByteBuffer>();
+      }
+      this.startRows.add(elem);
+    }
+
+    public List<ByteBuffer> getStartRows() {
+      return this.startRows;
+    }
+
+    public parallelScan_args setStartRows(List<ByteBuffer> startRows) {
+      this.startRows = startRows;
+      return this;
+    }
+
+    public void unsetStartRows() {
+      this.startRows = null;
+    }
+
+    /** Returns true if field startRows is set (has been asigned a value) and false otherwise */
+    public boolean isSetStartRows() {
+      return this.startRows != null;
+    }
+
+    public void setStartRowsIsSet(boolean value) {
+      if (!value) {
+        this.startRows = null;
+      }
+    }
+
+    public int getEndRowsSize() {
+      return (this.endRows == null) ? 0 : this.endRows.size();
+    }
+
+    public java.util.Iterator<ByteBuffer> getEndRowsIterator() {
+      return (this.endRows == null) ? null : this.endRows.iterator();
+    }
+
+    public void addToEndRows(ByteBuffer elem) {
+      if (this.endRows == null) {
+        this.endRows = new ArrayList<ByteBuffer>();
+      }
+      this.endRows.add(elem);
+    }
+
+    public List<ByteBuffer> getEndRows() {
+      return this.endRows;
+    }
+
+    public parallelScan_args setEndRows(List<ByteBuffer> endRows) {
+      this.endRows = endRows;
+      return this;
+    }
+
+    public void unsetEndRows() {
+      this.endRows = null;
+    }
+
+    /** Returns true if field endRows is set (has been asigned a value) and false otherwise */
+    public boolean isSetEndRows() {
+      return this.endRows != null;
+    }
+
+    public void setEndRowsIsSet(boolean value) {
+      if (!value) {
+        this.endRows = null;
+      }
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case SPEC:
+        if (value == null) {
+          unsetSpec();
+        } else {
+          setSpec((ScanSpec)value);
+        }
+        break;
+
+      case START_ROWS:
+        if (value == null) {
+          unsetStartRows();
+        } else {
+          setStartRows((List<ByteBuffer>)value);
+        }
+        break;
+
+      case END_ROWS:
+        if (value == null) {
+          unsetEndRows();
+        } else {
+          setEndRows((List<ByteBuffer>)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case SPEC:
+        return getSpec();
+
+      case START_ROWS:
+        return getStartRows();
+
+      case END_ROWS:
+        return getEndRows();
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case SPEC:
+        return isSetSpec();
+      case START_ROWS:
+        return isSetStartRows();
+      case END_ROWS:
+        return isSetEndRows();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof parallelScan_args)
+        return this.equals((parallelScan_args)that);
+      return false;
+    }
+
+    public boolean equals(parallelScan_args that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_spec = true && this.isSetSpec();
+      boolean that_present_spec = true && that.isSetSpec();
+      if (this_present_spec || that_present_spec) {
+        if (!(this_present_spec && that_present_spec))
+          return false;
+        if (!this.spec.equals(that.spec))
+          return false;
+      }
+
+      boolean this_present_startRows = true && this.isSetStartRows();
+      boolean that_present_startRows = true && that.isSetStartRows();
+      if (this_present_startRows || that_present_startRows) {
+        if (!(this_present_startRows && that_present_startRows))
+          return false;
+        if (!this.startRows.equals(that.startRows))
+          return false;
+      }
+
+      boolean this_present_endRows = true && this.isSetEndRows();
+      boolean that_present_endRows = true && that.isSetEndRows();
+      if (this_present_endRows || that_present_endRows) {
+        if (!(this_present_endRows && that_present_endRows))
+          return false;
+        if (!this.endRows.equals(that.endRows))
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(parallelScan_args other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      parallelScan_args typedOther = (parallelScan_args)other;
+
+      lastComparison = Boolean.valueOf(isSetSpec()).compareTo(typedOther.isSetSpec());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetSpec()) {
+        lastComparison = TBaseHelper.compareTo(this.spec, typedOther.spec);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetStartRows()).compareTo(typedOther.isSetStartRows());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetStartRows()) {
+        lastComparison = TBaseHelper.compareTo(this.startRows, typedOther.startRows);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetEndRows()).compareTo(typedOther.isSetEndRows());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetEndRows()) {
+        lastComparison = TBaseHelper.compareTo(this.endRows, typedOther.endRows);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(TProtocol iprot) throws TException {
+      TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == TType.STOP) {
+          break;
+        }
+        switch (field.id) {
+          case 1: // SPEC
+            if (field.type == TType.STRUCT) {
+              this.spec = new ScanSpec();
+              this.spec.read(iprot);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 2: // START_ROWS
+            if (field.type == TType.LIST) {
+              {
+                TList _list166 = iprot.readListBegin();
+                this.startRows = new ArrayList<ByteBuffer>(_list166.size);
+                for (int _i167 = 0; _i167 < _list166.size; ++_i167)
+                {
+                  ByteBuffer _elem168;
+                  _elem168 = iprot.readBinary();
+                  this.startRows.add(_elem168);
+                }
+                iprot.readListEnd();
+              }
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 3: // END_ROWS
+            if (field.type == TType.LIST) {
+              {
+                TList _list169 = iprot.readListBegin();
+                this.endRows = new ArrayList<ByteBuffer>(_list169.size);
+                for (int _i170 = 0; _i170 < _list169.size; ++_i170)
+                {
+                  ByteBuffer _elem171;
+                  _elem171 = iprot.readBinary();
+                  this.endRows.add(_elem171);
+                }
+                iprot.readListEnd();
+              }
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(TProtocol oprot) throws TException {
+      validate();
+
+      oprot.writeStructBegin(STRUCT_DESC);
+      if (this.spec != null) {
+        oprot.writeFieldBegin(SPEC_FIELD_DESC);
+        this.spec.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      if (this.startRows != null) {
+        oprot.writeFieldBegin(START_ROWS_FIELD_DESC);
+        {
+          oprot.writeListBegin(new TList(TType.STRING, this.startRows.size()));
+          for (ByteBuffer _iter172 : this.startRows)
+          {
+            oprot.writeBinary(_iter172);
+          }
+          oprot.writeListEnd();
+        }
+        oprot.writeFieldEnd();
+      }
+      if (this.endRows != null) {
+        oprot.writeFieldBegin(END_ROWS_FIELD_DESC);
+        {
+          oprot.writeListBegin(new TList(TType.STRING, this.endRows.size()));
+          for (ByteBuffer _iter173 : this.endRows)
+          {
+            oprot.writeBinary(_iter173);
+          }
+          oprot.writeListEnd();
+        }
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("parallelScan_args(");
+      boolean first = true;
+
+      sb.append("spec:");
+      if (this.spec == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.spec);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("startRows:");
+      if (this.startRows == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.startRows);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("endRows:");
+      if (this.endRows == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.endRows);
+      }
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws TException {
+      // check for required fields
+    }
+
+  }
+
+  public static class parallelScan_result implements TBase<parallelScan_result, parallelScan_result._Fields>, java.io.Serializable, Cloneable   {
+    private static final TStruct STRUCT_DESC = new TStruct("parallelScan_result");
+
+    private static final TField SUCCESS_FIELD_DESC = new TField("success", TType.LIST, (short)0);
+    private static final TField IO_FIELD_DESC = new TField("io", TType.STRUCT, (short)1);
+
+    public List<TRowResult> success;
+    public IOError io;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements TFieldIdEnum {
+      SUCCESS((short)0, "success"),
+      IO((short)1, "io");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 0: // SUCCESS
+            return SUCCESS;
+          case 1: // IO
+            return IO;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+
+    public static final Map<_Fields, FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, FieldMetaData> tmpMap = new EnumMap<_Fields, FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.SUCCESS, new FieldMetaData("success", TFieldRequirementType.DEFAULT,
+          new ListMetaData(TType.LIST,
+              new StructMetaData(TType.STRUCT, TRowResult.class))));
+      tmpMap.put(_Fields.IO, new FieldMetaData("io", TFieldRequirementType.DEFAULT,
+          new FieldValueMetaData(TType.STRUCT)));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      FieldMetaData.addStructMetaDataMap(parallelScan_result.class, metaDataMap);
+    }
+
+    public parallelScan_result() {
+    }
+
+    public parallelScan_result(
+      List<TRowResult> success,
+      IOError io)
+    {
+      this();
+      this.success = success;
+      this.io = io;
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public parallelScan_result(parallelScan_result other) {
+      if (other.isSetSuccess()) {
+        List<TRowResult> __this__success = new ArrayList<TRowResult>();
+        for (TRowResult other_element : other.success) {
+          __this__success.add(new TRowResult(other_element));
+        }
+        this.success = __this__success;
+      }
+      if (other.isSetIo()) {
+        this.io = new IOError(other.io);
+      }
+    }
+
+    public parallelScan_result deepCopy() {
+      return new parallelScan_result(this);
+    }
+
+    @Override
+    public void clear() {
+      this.success = null;
+      this.io = null;
+    }
+
+    public int getSuccessSize() {
+      return (this.success == null) ? 0 : this.success.size();
+    }
+
+    public java.util.Iterator<TRowResult> getSuccessIterator() {
+      return (this.success == null) ? null : this.success.iterator();
+    }
+
+    public void addToSuccess(TRowResult elem) {
+      if (this.success == null) {
+        this.success = new ArrayList<TRowResult>();
+      }
+      this.success.add(elem);
+    }
+
+    public List<TRowResult> getSuccess() {
+      return this.success;
+    }
+
+    public parallelScan_result setSuccess(List<TRowResult> success) {
+      this.success = success;
+      return this;
+    }
+
+    public void unsetSuccess() {
+      this.success = null;
+    }
+
+    /** Returns true if field success is set (has been asigned a value) and false otherwise */
+    public boolean isSetSuccess() {
+      return this.success != null;
+    }
+
+    public void setSuccessIsSet(boolean value) {
+      if (!value) {
+        this.success = null;
+      }
+    }
+
+    public IOError getIo() {
+      return this.io;
+    }
+
+    public parallelScan_result setIo(IOError io) {
+      this.io = io;
+      return this;
+    }
+
+    public void unsetIo() {
+      this.io = null;
+    }
+
+    /** Returns true if field io is set (has been asigned a value) and false otherwise */
+    public boolean isSetIo() {
+      return this.io != null;
+    }
+
+    public void setIoIsSet(boolean value) {
+      if (!value) {
+        this.io = null;
+      }
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case SUCCESS:
+        if (value == null) {
+          unsetSuccess();
+        } else {
+          setSuccess((List<TRowResult>)value);
+        }
+        break;
+
+      case IO:
+        if (value == null) {
+          unsetIo();
+        } else {
+          setIo((IOError)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case SUCCESS:
+        return getSuccess();
+
+      case IO:
+        return getIo();
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case SUCCESS:
+        return isSetSuccess();
+      case IO:
+        return isSetIo();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof parallelScan_result)
+        return this.equals((parallelScan_result)that);
+      return false;
+    }
+
+    public boolean equals(parallelScan_result that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_success = true && this.isSetSuccess();
+      boolean that_present_success = true && that.isSetSuccess();
+      if (this_present_success || that_present_success) {
+        if (!(this_present_success && that_present_success))
+          return false;
+        if (!this.success.equals(that.success))
+          return false;
+      }
+
+      boolean this_present_io = true && this.isSetIo();
+      boolean that_present_io = true && that.isSetIo();
+      if (this_present_io || that_present_io) {
+        if (!(this_present_io && that_present_io))
+          return false;
+        if (!this.io.equals(that.io))
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(parallelScan_result other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      parallelScan_result typedOther = (parallelScan_result)other;
+
+      lastComparison = Boolean.valueOf(isSetSuccess()).compareTo(typedOther.isSetSuccess());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetSuccess()) {
+        lastComparison = TBaseHelper.compareTo(this.success, typedOther.success);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetIo()).compareTo(typedOther.isSetIo());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetIo()) {
+        lastComparison = TBaseHelper.compareTo(this.io, typedOther.io);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(TProtocol iprot) throws TException {
+      TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == TType.STOP) {
+          break;
+        }
+        switch (field.id) {
+          case 0: // SUCCESS
+            if (field.type == TType.LIST) {
+              {
+                TList _list174 = iprot.readListBegin();
+                this.success = new ArrayList<TRowResult>(_list174.size);
+                for (int _i175 = 0; _i175 < _list174.size; ++_i175)
+                {
+                  TRowResult _elem176;
+                  _elem176 = new TRowResult();
+                  _elem176.read(iprot);
+                  this.success.add(_elem176);
+                }
+                iprot.readListEnd();
+              }
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 1: // IO
+            if (field.type == TType.STRUCT) {
+              this.io = new IOError();
+              this.io.read(iprot);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(TProtocol oprot) throws TException {
+      oprot.writeStructBegin(STRUCT_DESC);
+
+      if (this.isSetSuccess()) {
+        oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
+        {
+          oprot.writeListBegin(new TList(TType.STRUCT, this.success.size()));
+          for (TRowResult _iter177 : this.success)
+          {
+            _iter177.write(oprot);
+          }
+          oprot.writeListEnd();
+        }
+        oprot.writeFieldEnd();
+      } else if (this.isSetIo()) {
+        oprot.writeFieldBegin(IO_FIELD_DESC);
+        this.io.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("parallelScan_result(");
+      boolean first = true;
+
+      sb.append("success:");
+      if (this.success == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.success);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("io:");
+      if (this.io == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.io);
+      }
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws TException {
+      // check for required fields
+    }
+
+  }
+
+  public static class scan_args implements TBase<scan_args, scan_args._Fields>, java.io.Serializable, Cloneable   {
+    private static final TStruct STRUCT_DESC = new TStruct("scan_args");
+
+    private static final TField SPEC_FIELD_DESC = new TField("spec", TType.STRUCT, (short)1);
+    private static final TField N_ROWS_FIELD_DESC = new TField("nRows", TType.I32, (short)2);
+    private static final TField CLOSE_AFTER_FIELD_DESC = new TField("closeAfter", TType.BOOL, (short)3);
+
+    public ScanSpec spec;
+    public int nRows;
+    public boolean closeAfter;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements TFieldIdEnum {
+      SPEC((short)1, "spec"),
+      N_ROWS((short)2, "nRows"),
+      CLOSE_AFTER((short)3, "closeAfter");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 1: // SPEC
+            return SPEC;
+          case 2: // N_ROWS
+            return N_ROWS;
+          case 3: // CLOSE_AFTER
+            return CLOSE_AFTER;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+    private static final int __NROWS_ISSET_ID = 0;
+    private static final int __CLOSEAFTER_ISSET_ID = 1;
+    private BitSet __isset_bit_vector = new BitSet(2);
+
+    public static final Map<_Fields, FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, FieldMetaData> tmpMap = new EnumMap<_Fields, FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.SPEC, new FieldMetaData("spec", TFieldRequirementType.DEFAULT,
+          new StructMetaData(TType.STRUCT, ScanSpec.class)));
+      tmpMap.put(_Fields.N_ROWS, new FieldMetaData("nRows", TFieldRequirementType.DEFAULT,
+          new FieldValueMetaData(TType.I32)));
+      tmpMap.put(_Fields.CLOSE_AFTER, new FieldMetaData("closeAfter", TFieldRequirementType.DEFAULT,
+          new FieldValueMetaData(TType.BOOL)));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      FieldMetaData.addStructMetaDataMap(scan_args.class, metaDataMap);
+    }
+
+    public scan_args() {
+    }
+
+    public scan_args(
+      ScanSpec spec,
+      int nRows,
+      boolean closeAfter)
+    {
+      this();
+      this.spec = spec;
+      this.nRows = nRows;
+      setNRowsIsSet(true);
+      this.closeAfter = closeAfter;
+      setCloseAfterIsSet(true);
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public scan_args(scan_args other) {
+      __isset_bit_vector.clear();
+      __isset_bit_vector.or(other.__isset_bit_vector);
+      if (other.isSetSpec()) {
+        this.spec = new ScanSpec(other.spec);
+      }
+      this.nRows = other.nRows;
+      this.closeAfter = other.closeAfter;
+    }
+
+    public scan_args deepCopy() {
+      return new scan_args(this);
+    }
+
+    @Override
+    public void clear() {
+      this.spec = null;
+      setNRowsIsSet(false);
+      this.nRows = 0;
+      setCloseAfterIsSet(false);
+      this.closeAfter = false;
+    }
+
+    public ScanSpec getSpec() {
+      return this.spec;
+    }
+
+    public scan_args setSpec(ScanSpec spec) {
+      this.spec = spec;
+      return this;
+    }
+
+    public void unsetSpec() {
+      this.spec = null;
+    }
+
+    /** Returns true if field spec is set (has been asigned a value) and false otherwise */
+    public boolean isSetSpec() {
+      return this.spec != null;
+    }
+
+    public void setSpecIsSet(boolean value) {
+      if (!value) {
+        this.spec = null;
+      }
+    }
+
+    public int getNRows() {
+      return this.nRows;
+    }
+
+    public scan_args setNRows(int nRows) {
+      this.nRows = nRows;
+      setNRowsIsSet(true);
+      return this;
+    }
+
+    public void unsetNRows() {
+      __isset_bit_vector.clear(__NROWS_ISSET_ID);
+    }
+
+    /** Returns true if field nRows is set (has been asigned a value) and false otherwise */
+    public boolean isSetNRows() {
+      return __isset_bit_vector.get(__NROWS_ISSET_ID);
+    }
+
+    public void setNRowsIsSet(boolean value) {
+      __isset_bit_vector.set(__NROWS_ISSET_ID, value);
+    }
+
+    public boolean isCloseAfter() {
+      return this.closeAfter;
+    }
+
+    public scan_args setCloseAfter(boolean closeAfter) {
+      this.closeAfter = closeAfter;
+      setCloseAfterIsSet(true);
+      return this;
+    }
+
+    public void unsetCloseAfter() {
+      __isset_bit_vector.clear(__CLOSEAFTER_ISSET_ID);
+    }
+
+    /** Returns true if field closeAfter is set (has been asigned a value) and false otherwise */
+    public boolean isSetCloseAfter() {
+      return __isset_bit_vector.get(__CLOSEAFTER_ISSET_ID);
+    }
+
+    public void setCloseAfterIsSet(boolean value) {
+      __isset_bit_vector.set(__CLOSEAFTER_ISSET_ID, value);
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case SPEC:
+        if (value == null) {
+          unsetSpec();
+        } else {
+          setSpec((ScanSpec)value);
+        }
+        break;
+
+      case N_ROWS:
+        if (value == null) {
+          unsetNRows();
+        } else {
+          setNRows((Integer)value);
+        }
+        break;
+
+      case CLOSE_AFTER:
+        if (value == null) {
+          unsetCloseAfter();
+        } else {
+          setCloseAfter((Boolean)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case SPEC:
+        return getSpec();
+
+      case N_ROWS:
+        return new Integer(getNRows());
+
+      case CLOSE_AFTER:
+        return new Boolean(isCloseAfter());
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case SPEC:
+        return isSetSpec();
+      case N_ROWS:
+        return isSetNRows();
+      case CLOSE_AFTER:
+        return isSetCloseAfter();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof scan_args)
+        return this.equals((scan_args)that);
+      return false;
+    }
+
+    public boolean equals(scan_args that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_spec = true && this.isSetSpec();
+      boolean that_present_spec = true && that.isSetSpec();
+      if (this_present_spec || that_present_spec) {
+        if (!(this_present_spec && that_present_spec))
+          return false;
+        if (!this.spec.equals(that.spec))
+          return false;
+      }
+
+      boolean this_present_nRows = true;
+      boolean that_present_nRows = true;
+      if (this_present_nRows || that_present_nRows) {
+        if (!(this_present_nRows && that_present_nRows))
+          return false;
+        if (this.nRows != that.nRows)
+          return false;
+      }
+
+      boolean this_present_closeAfter = true;
+      boolean that_present_closeAfter = true;
+      if (this_present_closeAfter || that_present_closeAfter) {
+        if (!(this_present_closeAfter && that_present_closeAfter))
+          return false;
+        if (this.closeAfter != that.closeAfter)
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(scan_args other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      scan_args typedOther = (scan_args)other;
+
+      lastComparison = Boolean.valueOf(isSetSpec()).compareTo(typedOther.isSetSpec());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetSpec()) {
+        lastComparison = TBaseHelper.compareTo(this.spec, typedOther.spec);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetNRows()).compareTo(typedOther.isSetNRows());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetNRows()) {
+        lastComparison = TBaseHelper.compareTo(this.nRows, typedOther.nRows);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetCloseAfter()).compareTo(typedOther.isSetCloseAfter());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetCloseAfter()) {
+        lastComparison = TBaseHelper.compareTo(this.closeAfter, typedOther.closeAfter);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(TProtocol iprot) throws TException {
+      TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == TType.STOP) {
+          break;
+        }
+        switch (field.id) {
+          case 1: // SPEC
+            if (field.type == TType.STRUCT) {
+              this.spec = new ScanSpec();
+              this.spec.read(iprot);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 2: // N_ROWS
+            if (field.type == TType.I32) {
+              this.nRows = iprot.readI32();
+              setNRowsIsSet(true);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 3: // CLOSE_AFTER
+            if (field.type == TType.BOOL) {
+              this.closeAfter = iprot.readBool();
+              setCloseAfterIsSet(true);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(TProtocol oprot) throws TException {
+      validate();
+
+      oprot.writeStructBegin(STRUCT_DESC);
+      if (this.spec != null) {
+        oprot.writeFieldBegin(SPEC_FIELD_DESC);
+        this.spec.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldBegin(N_ROWS_FIELD_DESC);
+      oprot.writeI32(this.nRows);
+      oprot.writeFieldEnd();
+      oprot.writeFieldBegin(CLOSE_AFTER_FIELD_DESC);
+      oprot.writeBool(this.closeAfter);
+      oprot.writeFieldEnd();
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("scan_args(");
+      boolean first = true;
+
+      sb.append("spec:");
+      if (this.spec == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.spec);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("nRows:");
+      sb.append(this.nRows);
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("closeAfter:");
+      sb.append(this.closeAfter);
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws TException {
+      // check for required fields
+    }
+
+  }
+
+  public static class scan_result implements TBase<scan_result, scan_result._Fields>, java.io.Serializable, Cloneable   {
+    private static final TStruct STRUCT_DESC = new TStruct("scan_result");
+
+    private static final TField SUCCESS_FIELD_DESC = new TField("success", TType.STRUCT, (short)0);
+    private static final TField IO_FIELD_DESC = new TField("io", TType.STRUCT, (short)1);
+
+    public ScanResult success;
+    public IOError io;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements TFieldIdEnum {
+      SUCCESS((short)0, "success"),
+      IO((short)1, "io");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 0: // SUCCESS
+            return SUCCESS;
+          case 1: // IO
+            return IO;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+
+    public static final Map<_Fields, FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, FieldMetaData> tmpMap = new EnumMap<_Fields, FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.SUCCESS, new FieldMetaData("success", TFieldRequirementType.DEFAULT,
+          new StructMetaData(TType.STRUCT, ScanResult.class)));
+      tmpMap.put(_Fields.IO, new FieldMetaData("io", TFieldRequirementType.DEFAULT,
+          new FieldValueMetaData(TType.STRUCT)));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      FieldMetaData.addStructMetaDataMap(scan_result.class, metaDataMap);
+    }
+
+    public scan_result() {
+    }
+
+    public scan_result(
+      ScanResult success,
+      IOError io)
+    {
+      this();
+      this.success = success;
+      this.io = io;
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public scan_result(scan_result other) {
+      if (other.isSetSuccess()) {
+        this.success = new ScanResult(other.success);
+      }
+      if (other.isSetIo()) {
+        this.io = new IOError(other.io);
+      }
+    }
+
+    public scan_result deepCopy() {
+      return new scan_result(this);
+    }
+
+    @Override
+    public void clear() {
+      this.success = null;
+      this.io = null;
+    }
+
+    public ScanResult getSuccess() {
+      return this.success;
+    }
+
+    public scan_result setSuccess(ScanResult success) {
+      this.success = success;
+      return this;
+    }
+
+    public void unsetSuccess() {
+      this.success = null;
+    }
+
+    /** Returns true if field success is set (has been asigned a value) and false otherwise */
+    public boolean isSetSuccess() {
+      return this.success != null;
+    }
+
+    public void setSuccessIsSet(boolean value) {
+      if (!value) {
+        this.success = null;
+      }
+    }
+
+    public IOError getIo() {
+      return this.io;
+    }
+
+    public scan_result setIo(IOError io) {
+      this.io = io;
+      return this;
+    }
+
+    public void unsetIo() {
+      this.io = null;
+    }
+
+    /** Returns true if field io is set (has been asigned a value) and false otherwise */
+    public boolean isSetIo() {
+      return this.io != null;
+    }
+
+    public void setIoIsSet(boolean value) {
+      if (!value) {
+        this.io = null;
+      }
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case SUCCESS:
+        if (value == null) {
+          unsetSuccess();
+        } else {
+          setSuccess((ScanResult)value);
+        }
+        break;
+
+      case IO:
+        if (value == null) {
+          unsetIo();
+        } else {
+          setIo((IOError)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case SUCCESS:
+        return getSuccess();
+
+      case IO:
+        return getIo();
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case SUCCESS:
+        return isSetSuccess();
+      case IO:
+        return isSetIo();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof scan_result)
+        return this.equals((scan_result)that);
+      return false;
+    }
+
+    public boolean equals(scan_result that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_success = true && this.isSetSuccess();
+      boolean that_present_success = true && that.isSetSuccess();
+      if (this_present_success || that_present_success) {
+        if (!(this_present_success && that_present_success))
+          return false;
+        if (!this.success.equals(that.success))
+          return false;
+      }
+
+      boolean this_present_io = true && this.isSetIo();
+      boolean that_present_io = true && that.isSetIo();
+      if (this_present_io || that_present_io) {
+        if (!(this_present_io && that_present_io))
+          return false;
+        if (!this.io.equals(that.io))
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(scan_result other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      scan_result typedOther = (scan_result)other;
+
+      lastComparison = Boolean.valueOf(isSetSuccess()).compareTo(typedOther.isSetSuccess());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetSuccess()) {
+        lastComparison = TBaseHelper.compareTo(this.success, typedOther.success);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetIo()).compareTo(typedOther.isSetIo());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetIo()) {
+        lastComparison = TBaseHelper.compareTo(this.io, typedOther.io);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(TProtocol iprot) throws TException {
+      TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == TType.STOP) {
+          break;
+        }
+        switch (field.id) {
+          case 0: // SUCCESS
+            if (field.type == TType.STRUCT) {
+              this.success = new ScanResult();
+              this.success.read(iprot);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 1: // IO
+            if (field.type == TType.STRUCT) {
+              this.io = new IOError();
+              this.io.read(iprot);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(TProtocol oprot) throws TException {
+      oprot.writeStructBegin(STRUCT_DESC);
+
+      if (this.isSetSuccess()) {
+        oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
+        this.success.write(oprot);
+        oprot.writeFieldEnd();
+      } else if (this.isSetIo()) {
+        oprot.writeFieldBegin(IO_FIELD_DESC);
+        this.io.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("scan_result(");
+      boolean first = true;
+
+      sb.append("success:");
+      if (this.success == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.success);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("io:");
+      if (this.io == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.io);
+      }
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws TException {
+      // check for required fields
+    }
+
+  }
+
+  public static class scanMore_args implements TBase<scanMore_args, scanMore_args._Fields>, java.io.Serializable, Cloneable   {
+    private static final TStruct STRUCT_DESC = new TStruct("scanMore_args");
+
+    private static final TField SCANNER_ID_FIELD_DESC = new TField("scannerId", TType.I32, (short)1);
+    private static final TField N_ROWS_FIELD_DESC = new TField("nRows", TType.I32, (short)2);
+    private static final TField CLOSE_AFTER_FIELD_DESC = new TField("closeAfter", TType.BOOL, (short)3);
+
+    public int scannerId;
+    public int nRows;
+    public boolean closeAfter;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements TFieldIdEnum {
+      SCANNER_ID((short)1, "scannerId"),
+      N_ROWS((short)2, "nRows"),
+      CLOSE_AFTER((short)3, "closeAfter");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 1: // SCANNER_ID
+            return SCANNER_ID;
+          case 2: // N_ROWS
+            return N_ROWS;
+          case 3: // CLOSE_AFTER
+            return CLOSE_AFTER;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+    private static final int __SCANNERID_ISSET_ID = 0;
+    private static final int __NROWS_ISSET_ID = 1;
+    private static final int __CLOSEAFTER_ISSET_ID = 2;
+    private BitSet __isset_bit_vector = new BitSet(3);
+
+    public static final Map<_Fields, FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, FieldMetaData> tmpMap = new EnumMap<_Fields, FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.SCANNER_ID, new FieldMetaData("scannerId", TFieldRequirementType.DEFAULT,
+          new FieldValueMetaData(TType.I32          , "ScannerID")));
+      tmpMap.put(_Fields.N_ROWS, new FieldMetaData("nRows", TFieldRequirementType.DEFAULT,
+          new FieldValueMetaData(TType.I32)));
+      tmpMap.put(_Fields.CLOSE_AFTER, new FieldMetaData("closeAfter", TFieldRequirementType.DEFAULT,
+          new FieldValueMetaData(TType.BOOL)));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      FieldMetaData.addStructMetaDataMap(scanMore_args.class, metaDataMap);
+    }
+
+    public scanMore_args() {
+    }
+
+    public scanMore_args(
+      int scannerId,
+      int nRows,
+      boolean closeAfter)
+    {
+      this();
+      this.scannerId = scannerId;
+      setScannerIdIsSet(true);
+      this.nRows = nRows;
+      setNRowsIsSet(true);
+      this.closeAfter = closeAfter;
+      setCloseAfterIsSet(true);
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public scanMore_args(scanMore_args other) {
+      __isset_bit_vector.clear();
+      __isset_bit_vector.or(other.__isset_bit_vector);
+      this.scannerId = other.scannerId;
+      this.nRows = other.nRows;
+      this.closeAfter = other.closeAfter;
+    }
+
+    public scanMore_args deepCopy() {
+      return new scanMore_args(this);
+    }
+
+    @Override
+    public void clear() {
+      setScannerIdIsSet(false);
+      this.scannerId = 0;
+      setNRowsIsSet(false);
+      this.nRows = 0;
+      setCloseAfterIsSet(false);
+      this.closeAfter = false;
+    }
+
+    public int getScannerId() {
+      return this.scannerId;
+    }
+
+    public scanMore_args setScannerId(int scannerId) {
+      this.scannerId = scannerId;
+      setScannerIdIsSet(true);
+      return this;
+    }
+
+    public void unsetScannerId() {
+      __isset_bit_vector.clear(__SCANNERID_ISSET_ID);
+    }
+
+    /** Returns true if field scannerId is set (has been asigned a value) and false otherwise */
+    public boolean isSetScannerId() {
+      return __isset_bit_vector.get(__SCANNERID_ISSET_ID);
+    }
+
+    public void setScannerIdIsSet(boolean value) {
+      __isset_bit_vector.set(__SCANNERID_ISSET_ID, value);
+    }
+
+    public int getNRows() {
+      return this.nRows;
+    }
+
+    public scanMore_args setNRows(int nRows) {
+      this.nRows = nRows;
+      setNRowsIsSet(true);
+      return this;
+    }
+
+    public void unsetNRows() {
+      __isset_bit_vector.clear(__NROWS_ISSET_ID);
+    }
+
+    /** Returns true if field nRows is set (has been asigned a value) and false otherwise */
+    public boolean isSetNRows() {
+      return __isset_bit_vector.get(__NROWS_ISSET_ID);
+    }
+
+    public void setNRowsIsSet(boolean value) {
+      __isset_bit_vector.set(__NROWS_ISSET_ID, value);
+    }
+
+    public boolean isCloseAfter() {
+      return this.closeAfter;
+    }
+
+    public scanMore_args setCloseAfter(boolean closeAfter) {
+      this.closeAfter = closeAfter;
+      setCloseAfterIsSet(true);
+      return this;
+    }
+
+    public void unsetCloseAfter() {
+      __isset_bit_vector.clear(__CLOSEAFTER_ISSET_ID);
+    }
+
+    /** Returns true if field closeAfter is set (has been asigned a value) and false otherwise */
+    public boolean isSetCloseAfter() {
+      return __isset_bit_vector.get(__CLOSEAFTER_ISSET_ID);
+    }
+
+    public void setCloseAfterIsSet(boolean value) {
+      __isset_bit_vector.set(__CLOSEAFTER_ISSET_ID, value);
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case SCANNER_ID:
+        if (value == null) {
+          unsetScannerId();
+        } else {
+          setScannerId((Integer)value);
+        }
+        break;
+
+      case N_ROWS:
+        if (value == null) {
+          unsetNRows();
+        } else {
+          setNRows((Integer)value);
+        }
+        break;
+
+      case CLOSE_AFTER:
+        if (value == null) {
+          unsetCloseAfter();
+        } else {
+          setCloseAfter((Boolean)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case SCANNER_ID:
+        return new Integer(getScannerId());
+
+      case N_ROWS:
+        return new Integer(getNRows());
+
+      case CLOSE_AFTER:
+        return new Boolean(isCloseAfter());
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case SCANNER_ID:
+        return isSetScannerId();
+      case N_ROWS:
+        return isSetNRows();
+      case CLOSE_AFTER:
+        return isSetCloseAfter();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof scanMore_args)
+        return this.equals((scanMore_args)that);
+      return false;
+    }
+
+    public boolean equals(scanMore_args that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_scannerId = true;
+      boolean that_present_scannerId = true;
+      if (this_present_scannerId || that_present_scannerId) {
+        if (!(this_present_scannerId && that_present_scannerId))
+          return false;
+        if (this.scannerId != that.scannerId)
+          return false;
+      }
+
+      boolean this_present_nRows = true;
+      boolean that_present_nRows = true;
+      if (this_present_nRows || that_present_nRows) {
+        if (!(this_present_nRows && that_present_nRows))
+          return false;
+        if (this.nRows != that.nRows)
+          return false;
+      }
+
+      boolean this_present_closeAfter = true;
+      boolean that_present_closeAfter = true;
+      if (this_present_closeAfter || that_present_closeAfter) {
+        if (!(this_present_closeAfter && that_present_closeAfter))
+          return false;
+        if (this.closeAfter != that.closeAfter)
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(scanMore_args other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      scanMore_args typedOther = (scanMore_args)other;
+
+      lastComparison = Boolean.valueOf(isSetScannerId()).compareTo(typedOther.isSetScannerId());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetScannerId()) {
+        lastComparison = TBaseHelper.compareTo(this.scannerId, typedOther.scannerId);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetNRows()).compareTo(typedOther.isSetNRows());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetNRows()) {
+        lastComparison = TBaseHelper.compareTo(this.nRows, typedOther.nRows);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetCloseAfter()).compareTo(typedOther.isSetCloseAfter());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetCloseAfter()) {
+        lastComparison = TBaseHelper.compareTo(this.closeAfter, typedOther.closeAfter);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(TProtocol iprot) throws TException {
+      TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == TType.STOP) {
+          break;
+        }
+        switch (field.id) {
+          case 1: // SCANNER_ID
+            if (field.type == TType.I32) {
+              this.scannerId = iprot.readI32();
+              setScannerIdIsSet(true);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 2: // N_ROWS
+            if (field.type == TType.I32) {
+              this.nRows = iprot.readI32();
+              setNRowsIsSet(true);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 3: // CLOSE_AFTER
+            if (field.type == TType.BOOL) {
+              this.closeAfter = iprot.readBool();
+              setCloseAfterIsSet(true);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(TProtocol oprot) throws TException {
+      validate();
+
+      oprot.writeStructBegin(STRUCT_DESC);
+      oprot.writeFieldBegin(SCANNER_ID_FIELD_DESC);
+      oprot.writeI32(this.scannerId);
+      oprot.writeFieldEnd();
+      oprot.writeFieldBegin(N_ROWS_FIELD_DESC);
+      oprot.writeI32(this.nRows);
+      oprot.writeFieldEnd();
+      oprot.writeFieldBegin(CLOSE_AFTER_FIELD_DESC);
+      oprot.writeBool(this.closeAfter);
+      oprot.writeFieldEnd();
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("scanMore_args(");
+      boolean first = true;
+
+      sb.append("scannerId:");
+      sb.append(this.scannerId);
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("nRows:");
+      sb.append(this.nRows);
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("closeAfter:");
+      sb.append(this.closeAfter);
+      first = false;
+      sb.append(")");
+      return sb.toString();
+    }
+
+    public void validate() throws TException {
+      // check for required fields
+    }
+
+  }
+
+  public static class scanMore_result implements TBase<scanMore_result, scanMore_result._Fields>, java.io.Serializable, Cloneable   {
+    private static final TStruct STRUCT_DESC = new TStruct("scanMore_result");
+
+    private static final TField SUCCESS_FIELD_DESC = new TField("success", TType.STRUCT, (short)0);
+    private static final TField IO_FIELD_DESC = new TField("io", TType.STRUCT, (short)1);
+
+    public ScanResult success;
+    public IOError io;
+
+    /** The set of fields this struct contains, along with convenience methods for finding and manipulating them. */
+    public enum _Fields implements TFieldIdEnum {
+      SUCCESS((short)0, "success"),
+      IO((short)1, "io");
+
+      private static final Map<String, _Fields> byName = new HashMap<String, _Fields>();
+
+      static {
+        for (_Fields field : EnumSet.allOf(_Fields.class)) {
+          byName.put(field.getFieldName(), field);
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, or null if its not found.
+       */
+      public static _Fields findByThriftId(int fieldId) {
+        switch(fieldId) {
+          case 0: // SUCCESS
+            return SUCCESS;
+          case 1: // IO
+            return IO;
+          default:
+            return null;
+        }
+      }
+
+      /**
+       * Find the _Fields constant that matches fieldId, throwing an exception
+       * if it is not found.
+       */
+      public static _Fields findByThriftIdOrThrow(int fieldId) {
+        _Fields fields = findByThriftId(fieldId);
+        if (fields == null) throw new IllegalArgumentException("Field " + fieldId + " doesn't exist!");
+        return fields;
+      }
+
+      /**
+       * Find the _Fields constant that matches name, or null if its not found.
+       */
+      public static _Fields findByName(String name) {
+        return byName.get(name);
+      }
+
+      private final short _thriftId;
+      private final String _fieldName;
+
+      _Fields(short thriftId, String fieldName) {
+        _thriftId = thriftId;
+        _fieldName = fieldName;
+      }
+
+      public short getThriftFieldId() {
+        return _thriftId;
+      }
+
+      public String getFieldName() {
+        return _fieldName;
+      }
+    }
+
+    // isset id assignments
+
+    public static final Map<_Fields, FieldMetaData> metaDataMap;
+    static {
+      Map<_Fields, FieldMetaData> tmpMap = new EnumMap<_Fields, FieldMetaData>(_Fields.class);
+      tmpMap.put(_Fields.SUCCESS, new FieldMetaData("success", TFieldRequirementType.DEFAULT,
+          new StructMetaData(TType.STRUCT, ScanResult.class)));
+      tmpMap.put(_Fields.IO, new FieldMetaData("io", TFieldRequirementType.DEFAULT,
+          new FieldValueMetaData(TType.STRUCT)));
+      metaDataMap = Collections.unmodifiableMap(tmpMap);
+      FieldMetaData.addStructMetaDataMap(scanMore_result.class, metaDataMap);
+    }
+
+    public scanMore_result() {
+    }
+
+    public scanMore_result(
+      ScanResult success,
+      IOError io)
+    {
+      this();
+      this.success = success;
+      this.io = io;
+    }
+
+    /**
+     * Performs a deep copy on <i>other</i>.
+     */
+    public scanMore_result(scanMore_result other) {
+      if (other.isSetSuccess()) {
+        this.success = new ScanResult(other.success);
+      }
+      if (other.isSetIo()) {
+        this.io = new IOError(other.io);
+      }
+    }
+
+    public scanMore_result deepCopy() {
+      return new scanMore_result(this);
+    }
+
+    @Override
+    public void clear() {
+      this.success = null;
+      this.io = null;
+    }
+
+    public ScanResult getSuccess() {
+      return this.success;
+    }
+
+    public scanMore_result setSuccess(ScanResult success) {
+      this.success = success;
+      return this;
+    }
+
+    public void unsetSuccess() {
+      this.success = null;
+    }
+
+    /** Returns true if field success is set (has been asigned a value) and false otherwise */
+    public boolean isSetSuccess() {
+      return this.success != null;
+    }
+
+    public void setSuccessIsSet(boolean value) {
+      if (!value) {
+        this.success = null;
+      }
+    }
+
+    public IOError getIo() {
+      return this.io;
+    }
+
+    public scanMore_result setIo(IOError io) {
+      this.io = io;
+      return this;
+    }
+
+    public void unsetIo() {
+      this.io = null;
+    }
+
+    /** Returns true if field io is set (has been asigned a value) and false otherwise */
+    public boolean isSetIo() {
+      return this.io != null;
+    }
+
+    public void setIoIsSet(boolean value) {
+      if (!value) {
+        this.io = null;
+      }
+    }
+
+    public void setFieldValue(_Fields field, Object value) {
+      switch (field) {
+      case SUCCESS:
+        if (value == null) {
+          unsetSuccess();
+        } else {
+          setSuccess((ScanResult)value);
+        }
+        break;
+
+      case IO:
+        if (value == null) {
+          unsetIo();
+        } else {
+          setIo((IOError)value);
+        }
+        break;
+
+      }
+    }
+
+    public Object getFieldValue(_Fields field) {
+      switch (field) {
+      case SUCCESS:
+        return getSuccess();
+
+      case IO:
+        return getIo();
+
+      }
+      throw new IllegalStateException();
+    }
+
+    /** Returns true if field corresponding to fieldID is set (has been asigned a value) and false otherwise */
+    public boolean isSet(_Fields field) {
+      if (field == null) {
+        throw new IllegalArgumentException();
+      }
+
+      switch (field) {
+      case SUCCESS:
+        return isSetSuccess();
+      case IO:
+        return isSetIo();
+      }
+      throw new IllegalStateException();
+    }
+
+    @Override
+    public boolean equals(Object that) {
+      if (that == null)
+        return false;
+      if (that instanceof scanMore_result)
+        return this.equals((scanMore_result)that);
+      return false;
+    }
+
+    public boolean equals(scanMore_result that) {
+      if (that == null)
+        return false;
+
+      boolean this_present_success = true && this.isSetSuccess();
+      boolean that_present_success = true && that.isSetSuccess();
+      if (this_present_success || that_present_success) {
+        if (!(this_present_success && that_present_success))
+          return false;
+        if (!this.success.equals(that.success))
+          return false;
+      }
+
+      boolean this_present_io = true && this.isSetIo();
+      boolean that_present_io = true && that.isSetIo();
+      if (this_present_io || that_present_io) {
+        if (!(this_present_io && that_present_io))
+          return false;
+        if (!this.io.equals(that.io))
+          return false;
+      }
+
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return 0;
+    }
+
+    public int compareTo(scanMore_result other) {
+      if (!getClass().equals(other.getClass())) {
+        return getClass().getName().compareTo(other.getClass().getName());
+      }
+
+      int lastComparison = 0;
+      scanMore_result typedOther = (scanMore_result)other;
+
+      lastComparison = Boolean.valueOf(isSetSuccess()).compareTo(typedOther.isSetSuccess());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetSuccess()) {
+        lastComparison = TBaseHelper.compareTo(this.success, typedOther.success);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      lastComparison = Boolean.valueOf(isSetIo()).compareTo(typedOther.isSetIo());
+      if (lastComparison != 0) {
+        return lastComparison;
+      }
+      if (isSetIo()) {
+        lastComparison = TBaseHelper.compareTo(this.io, typedOther.io);
+        if (lastComparison != 0) {
+          return lastComparison;
+        }
+      }
+      return 0;
+    }
+
+    public _Fields fieldForId(int fieldId) {
+      return _Fields.findByThriftId(fieldId);
+    }
+
+    public void read(TProtocol iprot) throws TException {
+      TField field;
+      iprot.readStructBegin();
+      while (true)
+      {
+        field = iprot.readFieldBegin();
+        if (field.type == TType.STOP) {
+          break;
+        }
+        switch (field.id) {
+          case 0: // SUCCESS
+            if (field.type == TType.STRUCT) {
+              this.success = new ScanResult();
+              this.success.read(iprot);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          case 1: // IO
+            if (field.type == TType.STRUCT) {
+              this.io = new IOError();
+              this.io.read(iprot);
+            } else {
+              TProtocolUtil.skip(iprot, field.type);
+            }
+            break;
+          default:
+            TProtocolUtil.skip(iprot, field.type);
+        }
+        iprot.readFieldEnd();
+      }
+      iprot.readStructEnd();
+
+      // check for required fields of primitive type, which can't be checked in the validate method
+      validate();
+    }
+
+    public void write(TProtocol oprot) throws TException {
+      oprot.writeStructBegin(STRUCT_DESC);
+
+      if (this.isSetSuccess()) {
+        oprot.writeFieldBegin(SUCCESS_FIELD_DESC);
+        this.success.write(oprot);
+        oprot.writeFieldEnd();
+      } else if (this.isSetIo()) {
+        oprot.writeFieldBegin(IO_FIELD_DESC);
+        this.io.write(oprot);
+        oprot.writeFieldEnd();
+      }
+      oprot.writeFieldStop();
+      oprot.writeStructEnd();
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("scanMore_result(");
+      boolean first = true;
+
+      sb.append("success:");
+      if (this.success == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.success);
+      }
+      first = false;
+      if (!first) sb.append(", ");
+      sb.append("io:");
+      if (this.io == null) {
+        sb.append("null");
+      } else {
+        sb.append(this.io);
+      }
       first = false;
       sb.append(")");
       return sb.toString();

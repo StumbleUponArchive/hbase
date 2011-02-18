@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -80,6 +81,8 @@ import org.apache.hadoop.hbase.thrift.generated.IOError;
 import org.apache.hadoop.hbase.thrift.generated.IllegalArgument;
 import org.apache.hadoop.hbase.thrift.generated.Increment;
 import org.apache.hadoop.hbase.thrift.generated.Mutation;
+import org.apache.hadoop.hbase.thrift.generated.ScanResult;
+import org.apache.hadoop.hbase.thrift.generated.ScanSpec;
 import org.apache.hadoop.hbase.thrift.generated.TCell;
 import org.apache.hadoop.hbase.thrift.generated.TRegionInfo;
 import org.apache.hadoop.hbase.thrift.generated.TRowResult;
@@ -154,7 +157,7 @@ public class ThriftServer {
       return scannerMap.size();
     }
     public int getNextScannerId() {
-      return nextScannerId;
+      return nextScannerId.get();
     }
     public long getPoolCompletedTaskCount() {
       return pool.getCompletedTaskCount();
@@ -211,16 +214,34 @@ public class ThriftServer {
     protected HBaseAdmin admin = null;
     protected final Log LOG = LogFactory.getLog(this.getClass().getName());
 
-    // nextScannerId and scannerMap are used to manage scanner state
-    protected int nextScannerId = 0;
-    protected HashMap<Integer, ResultScanner> scannerMap = null;
+    static class ScannerAndNext {
+      final ResultScanner scanner;
+      final Result next;
 
-    private static ThreadLocal<Map<String, HTable>> threadLocalTables = new ThreadLocal<Map<String, HTable>>() {
+      public ScannerAndNext(ResultScanner scanner,
+                            Result next) {
+        this.scanner = scanner;
+        this.next = next;
+      }
+    }
+
+    protected Map<Integer, ScannerAndNext> newScannerMap =
+       new ConcurrentHashMap<Integer,ScannerAndNext>();
+
+    // nextScannerId and scannerMap are used to manage scanner state
+    protected AtomicInteger nextScannerId = new AtomicInteger();
+    protected Map<Integer, ResultScanner> scannerMap =
+        new ConcurrentHashMap<Integer, ResultScanner>();
+;
+
+    private static ThreadLocal<Map<String, HTable>> threadLocalTables =
+        new ThreadLocal<Map<String, HTable>>() {
       @Override
       protected Map<String, HTable> initialValue() {
         return new TreeMap<String, HTable>();
       }
     };
+
     private final ThreadPoolExecutor pool;
 
     private int failQueueSize = 10000;
@@ -276,8 +297,8 @@ public class ThriftServer {
      * @param scanner
      * @return integer scanner id
      */
-    protected synchronized int addScanner(ResultScanner scanner) {
-      int id = nextScannerId++;
+    protected int addScanner(ResultScanner scanner) {
+      int id = nextScannerId.incrementAndGet();
       scannerMap.put(id, scanner);
       return id;
     }
@@ -288,7 +309,7 @@ public class ThriftServer {
      * @param id
      * @return a Scanner, or null if ID was invalid.
      */
-    protected synchronized ResultScanner getScanner(int id) {
+    protected ResultScanner getScanner(int id) {
       return scannerMap.get(id);
     }
 
@@ -299,7 +320,7 @@ public class ThriftServer {
      * @param id
      * @return a Scanner, or null if ID was invalid.
      */
-    protected synchronized ResultScanner removeScanner(int id) {
+    protected ResultScanner removeScanner(int id) {
       return scannerMap.remove(id);
     }
 
@@ -318,7 +339,6 @@ public class ThriftServer {
       // be way more aggressive about time outs.
       conf.setInt("hbase.client.retries.number", 4);
       admin = new HBaseAdmin(conf);
-      scannerMap = new HashMap<Integer, ResultScanner>();
 
       LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>();
       pool = new ThreadPoolExecutor(CORE_POOL_SIZE, CORE_POOL_SIZE,
@@ -825,6 +845,165 @@ public class ThriftServer {
       pool.submit(callable);
 
       return true;
+    }
+
+    @Override
+    public List<TRowResult> parallelScan(ScanSpec spec,
+                                         List<ByteBuffer> startRows,
+                                         List<ByteBuffer> endRows)
+        throws IOError, TException {
+      return new ArrayList<TRowResult>();
+    }
+
+    @Override
+    public ScanResult scan(ScanSpec spec, int nRows, boolean closeAfter)
+        throws IOError, TException {
+
+      // Build a Scan object, populate it, then execute scan and return.
+      if (!spec.isSetTableName()) {
+        throw new IOError("Spec.tableName needs to be set!");
+      }
+      if (spec.prefixScan && !spec.isSetStartRow()) {
+        throw new IOError("If you set prefixScan you must also set startRow!");
+      }
+      if (spec.prefixScan && spec.isSetStopRow()) {
+        throw new IOError("Prefix scan with stop row not allowed");
+      }
+
+      ResultScanner scanner = null;
+
+      try {
+        HTable table = getTable(spec.getTableName());
+
+        // Set up scan!
+        Scan scan = new Scan();
+        if (spec.isSetStartRow()) {
+          scan.setStartRow(spec.getStartRow());
+        }
+        if (spec.isSetStopRow()) {
+          scan.setStopRow(spec.getStopRow());
+        }
+        if (spec.prefixScan) {
+          Filter f = new PrefixFilter(spec.getStartRow());
+          scan.setFilter(f);
+        }
+        if (spec.isSetColumns()) {
+          for (ByteBuffer column : spec.getColumns()) {
+            byte [][] famAndQf = KeyValue.parseColumn(getBytes(column));
+            if (famAndQf.length == 1) {
+              scan.addFamily(famAndQf[0]);
+            } else {
+              scan.addColumn(famAndQf[0], famAndQf[1]);
+            }
+          }
+        }
+        if (spec.isSetMaxVersions()) {
+          scan.setMaxVersions(spec.getMaxVersions());
+        }
+        if (spec.isSetEndTime() || spec.isSetStartTime()) {
+          // Process time filter here.
+          long startTime = Long.MIN_VALUE;
+          long endTime = Long.MAX_VALUE;
+          if (spec.isSetStartTime()) {
+            startTime = spec.getStartTime();
+          }
+          if (spec.isSetEndTime()) {
+            endTime = spec.getEndTime();
+          }
+          scan.setTimeRange(startTime, endTime);
+        }
+        // boolean defaults to false, but we want to default to 'true',
+        // so only set this if the client explicitly sets it.
+        if (spec.isSetCacheBlocks()) {
+          scan.setCacheBlocks(spec.cacheBlocks);
+        }
+        scan.setCaching(nRows+1);
+
+        // Start to execute scan...
+        scanner = table.getScanner(scan);
+        // need to actually grab the next one!
+
+        Result[] data = scanner.next(nRows);
+
+        Result nextOne = null;
+
+        // if we got the nRows worth, peek ahead and see if there is a next one.
+        if (data.length == nRows) {
+          nextOne = scanner.next();
+        }
+
+        int scannerId = 0;
+        if (closeAfter || nextOne == null) {
+          scanner.close();
+        } else {
+          ScannerAndNext sn = new ScannerAndNext(scanner,nextOne);
+          scannerId = nextScannerId.incrementAndGet();
+          newScannerMap.put(scannerId, sn);
+        }
+
+        // build our response.
+        ScanResult scanResult = new ScanResult();
+        scanResult.setResults(ThriftUtilities.rowResultFromHBase(data));
+        if (closeAfter || nextOne == null) {
+          scanResult.setHasMore(false);
+        } else {
+          scanResult.setHasMore(true);
+          scanResult.setScannerId(scannerId);
+        }
+
+        return scanResult;
+      } catch (IOException e) {
+        if (scanner != null) {
+          scanner.close();
+        }
+        throw new IOError(e.getMessage());
+      }
+
+    }
+
+    @Override
+    public ScanResult scanMore(int scannerId, int nRows, boolean closeAfter)
+        throws IOError, TException {
+      ScannerAndNext sn;
+
+      // Two threads scanning the same scanner would be very bad.
+      synchronized (newScannerMap) {
+        sn = newScannerMap.get(scannerId);
+        if (sn == null) {
+          throw new IOError("No such scanner: " + scannerId);
+        }
+        newScannerMap.remove(scannerId);
+      }
+
+      try {
+        Result [] data = sn.scanner.next(nRows);
+
+        Result next = null;
+        if (data.length == nRows) {
+          next = sn.scanner.next();
+        }
+
+        ScanResult scanResult = new ScanResult();
+        scanResult.setResults(ThriftUtilities.rowResultFromHBase(data));
+        if (closeAfter || next == null) {
+          scanResult.setHasMore(false);
+          sn.scanner.close();
+        } else {
+          // next != null
+          scanResult.setHasMore(true);
+          scanResult.setScannerId(scannerId);
+
+          newScannerMap.put(scannerId,
+              new ScannerAndNext(sn.scanner,
+                  next));
+        }
+        return scanResult;
+      } catch (IOException ex) {
+        newScannerMap.remove(scannerId);
+        sn.scanner.close(); // scanner is dead now.
+
+        throw new IOError(ex.getMessage());
+      }
     }
 
     private Callable<Integer> createIncCallable(final List<Increment> incrs) {
