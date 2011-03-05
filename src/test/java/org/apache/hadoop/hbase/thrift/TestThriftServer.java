@@ -220,7 +220,7 @@ public class TestThriftServer extends HBaseClusterTestCase {
     assertFalse(rowResult1.columns.containsKey(columnAname));
 
     // query using the getRows() api:
-    List<byte[]> rows = new ArrayList<byte[]>();
+    List<ByteBuffer> rows = new ArrayList<ByteBuffer>();
     rows.add(rowAname); rows.add(rowBname);
     List<TRowResult> r = handler.getRows(tableAname, rows);
     assertEquals(2, r.size());
