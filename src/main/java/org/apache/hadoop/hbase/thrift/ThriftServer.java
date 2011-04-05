@@ -18,12 +18,8 @@
 
 package org.apache.hadoop.hbase.thrift;
 
-import javax.management.InstanceAlreadyExistsException;
-import javax.management.MBeanRegistrationException;
-import javax.management.MBeanServer;
-import javax.management.MalformedObjectNameException;
-import javax.management.NotCompliantMBeanException;
-import javax.management.ObjectName;
+import static org.apache.hadoop.hbase.util.Bytes.getBytes;
+
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
@@ -32,7 +28,6 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -43,6 +38,13 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import javax.management.InstanceAlreadyExistsException;
+import javax.management.MBeanRegistrationException;
+import javax.management.MBeanServer;
+import javax.management.MalformedObjectNameException;
+import javax.management.NotCompliantMBeanException;
+import javax.management.ObjectName;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -101,8 +103,6 @@ import org.apache.thrift.transport.TNonblockingServerTransport;
 import org.apache.thrift.transport.TServerSocket;
 import org.apache.thrift.transport.TServerTransport;
 import org.apache.thrift.transport.TTransportFactory;
-
-import static org.apache.hadoop.hbase.util.Bytes.getBytes;
 
 /**
  * ThriftServer - this class starts up a Thrift server which implements the
@@ -976,7 +976,24 @@ public class ThriftServer {
       }
 
       try {
-        Result [] data = sn.scanner.next(nRows);
+        Result [] data = null;
+        // If we squirreled off a result in sn.next, need to produce it here.
+        if (sn.next !=  null) {
+          // We have a result from previous scan invocation.  Count it in.
+          Result [] interrim = nRows <= 1? interrim = new Result [0]:
+            sn.scanner.next(nRows - 1);
+          // Now assemble in data the fetched results and what we had up in
+          // sn.next, saved off from last call.
+          data = new Result[interrim.length + 1];
+          data[0] = sn.next;
+          int index = 0;
+          for (Result r: interrim) {
+            // pre-increment because we have something in first position.
+            data[++index] = r;
+          }
+        } else {
+          data = sn.scanner.next(nRows);
+        }
 
         Result next = null;
         if (data.length == nRows) {
@@ -1194,7 +1211,8 @@ public class ThriftServer {
 
     @Override
     public int scannerOpenTs(ByteBuffer tableName, ByteBuffer startRow,
-        List<ByteBuffer> columns, long timestamp) throws IOError, TException {
+        List<ByteBuffer> columns, long timestamp)
+    throws IOError, TException {
       try {
         HTable table = getTable(tableName);
         Scan scan = new Scan(getBytes(startRow));

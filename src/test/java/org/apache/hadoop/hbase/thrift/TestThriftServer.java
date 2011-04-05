@@ -23,19 +23,32 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hbase.HBaseClusterTestCase;
+import org.apache.hadoop.hbase.KeyValue;
+import org.apache.hadoop.hbase.client.HTable;
+import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.ResultScanner;
+import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.thrift.generated.BatchMutation;
 import org.apache.hadoop.hbase.thrift.generated.ColumnDescriptor;
+import org.apache.hadoop.hbase.thrift.generated.IOError;
 import org.apache.hadoop.hbase.thrift.generated.Mutation;
+import org.apache.hadoop.hbase.thrift.generated.ScanResult;
+import org.apache.hadoop.hbase.thrift.generated.ScanSpec;
 import org.apache.hadoop.hbase.thrift.generated.TCell;
 import org.apache.hadoop.hbase.thrift.generated.TRowResult;
 import org.apache.hadoop.hbase.util.Bytes;
+import org.apache.thrift.TException;
 
 /**
  * Unit testing for ThriftServer.HBaseHandler, a part of the
  * org.apache.hadoop.hbase.thrift package.
  */
 public class TestThriftServer extends HBaseClusterTestCase {
+  public static final Log LOG = LogFactory.getLog(TestThriftServer.class);
 
   private static ByteBuffer $bb(String i) {
     return ByteBuffer.wrap(Bytes.toBytes(i));
@@ -61,11 +74,59 @@ public class TestThriftServer extends HBaseClusterTestCase {
    * @throws Exception
    */
   public void testAll() throws Exception {
-    // Run all tests
+    // Run all tests.  Tests will fail if not run in the right order.
     doTestTableCreateDrop();
     doTestTableMutations();
     doTestTableTimestampsAndColumns();
     doTestTableScanners();
+    doTestOneShotScan();
+  }
+
+  /**
+   * Test scan in one shot.
+   * @throws Exception
+   */
+  public void doTestOneShotScan() throws Exception {
+    ByteBuffer oneshotscan = $bb("oneshotscan");
+    ThriftServer.HBaseHandler handler = new ThriftServer.HBaseHandler(this.conf);
+    handler.createTable(oneshotscan, getColumnDescriptors());
+    final int rowCount = 20;
+    for (int i = 0; i < rowCount; i++) {
+      // Add to tableAname on rowAname:
+      // columnA -> valueA
+      // columnB -> valueB
+      handler.mutateRow(oneshotscan, $bb("row" + (i < 10? "0" + i: i)), getMutations());
+    }
+    ScanSpec spec = new ScanSpec();
+    spec.setColumns(getColumnList(true, true));
+    spec.setTableName(oneshotscan);
+    ScanResult results = handler.scan(spec, 10, false);
+    for (TRowResult result: results.getResults()) {
+      LOG.info(Bytes.toString(result.getRow()));
+    }
+    int count = results.getResultsSize();
+    count += doHasMoreRows(handler, results.getScannerId(), 3);
+    count += doHasMoreRows(handler, results.getScannerId(), 3);
+    count += doHasMoreRows(handler, results.getScannerId(), 10);
+    assertEquals(rowCount, count);
+  }
+
+  /**
+   * @param handler
+   * @param scannerid
+   * @param num
+   * @return Count of how many rows fetched.
+   * @throws IOError
+   * @throws TException
+   */
+  private int doHasMoreRows(final ThriftServer.HBaseHandler handler,
+      final int scannerid, final int num)
+  throws IOError, TException {
+    ScanResult results = handler.scanMore(scannerid, num, false);
+    for (TRowResult result: results.getResults()) {
+      LOG.info(Bytes.toString(result.getRow()));
+    }
+    return results.getResultsSize();
   }
 
   /**
@@ -264,6 +325,9 @@ public class TestThriftServer extends HBaseClusterTestCase {
 
     // Apply timestamped Mutations to rowA
     long time1 = System.currentTimeMillis();
+    // Add to tableAname on rowAname:
+    // columnA -> valueA
+    // columnB -> valueB
     handler.mutateRowTs(tableAname, rowAname, getMutations(), time1);
 
     // Sleep to assure that 'time1' and 'time2' will be different even with a
@@ -271,21 +335,27 @@ public class TestThriftServer extends HBaseClusterTestCase {
     Thread.sleep(1000);
 
     // Apply timestamped BatchMutations for rowA and rowB
+    // Add to tableAname
+    //
+    // At rowA, columnA -> DELETE
+    // At rowA, columnB -> valueC
+    // At rowB, columnA -> valueC
+    // At rowB, columnB -> valueD
     long time2 = System.currentTimeMillis();
     handler.mutateRowsTs(tableAname, getBatchMutations(), time2);
 
+    LOG.info("time1=" + time1 + ", time2=" + time2 + ", time1 + 1=" + (time1 + 1));
     time1 += 1;
 
     // Test a scanner on all rows and all columns, no timestamp
-    int scanner1 = handler.scannerOpen(tableAname, rowAname, getColumnList(true, true));
+    int scanner1 =
+      handler.scannerOpen(tableAname, rowAname, getColumnList(true, true));
+    // Get row A.
     TRowResult rowResult1a = handler.scannerGet(scanner1).get(0);
     assertEquals(rowResult1a.row, rowAname);
-    // This used to be '1'.  I don't know why when we are asking for two columns
-    // and when the mutations above would seem to add two columns to the row.
-    // -- St.Ack 05/12/2009
     assertEquals(rowResult1a.columns.size(), 1);
     assertEquals(rowResult1a.columns.get(columnBname).value, valueCname);
-
+    // Get next row, row B.
     TRowResult rowResult1b = handler.scannerGet(scanner1).get(0);
     assertEquals(rowResult1b.row, rowBname);
     assertEquals(rowResult1b.columns.size(), 2);
@@ -293,13 +363,38 @@ public class TestThriftServer extends HBaseClusterTestCase {
     assertEquals(rowResult1b.columns.get(columnBname).value, valueDname);
     closeScanner(scanner1, handler);
 
-    // Test a scanner on all rows and all columns, with timestamp
-    int scanner2 = handler.scannerOpenTs(tableAname, rowAname, getColumnList(true, true), time1);
+    // Check w/ raw client.
+    HTable t = new HTable(this.conf, tableAname.array());
+    Scan s = new Scan(rowAname.array());
+    List<ByteBuffer> columns = getColumnList(true, true);
+    for (ByteBuffer family: columns) s.addFamily(KeyValue.parseColumn(family.array())[0]);
+    s.setTimeRange(time1, Long.MAX_VALUE);
+    ResultScanner rs = t.getScanner(s);
+    while(true) {
+      Result r = rs.next();
+      if (r == null) break;
+      LOG.info("Result=" + r);
+      for (KeyValue kv: r.raw()) {
+        LOG.info("kv=" + kv.toString() + ", value=" +
+          Bytes.toStringBinary(kv.getValue()));
+      }
+    }
+    rs.close();
+
+    // Test a scanner on all rows and all columns, with timestamp. The below
+    // asks that we return values newer or equal to time1.
+    int scanner2 =
+      handler.scannerOpenTs(tableAname, rowAname, getColumnList(true, true), time1);
     TRowResult rowResult2a = handler.scannerGet(scanner2).get(0);
     assertEquals(rowResult2a.columns.size(), 1);
-    // column A deleted, does not exist.
-    //assertTrue(Bytes.equals(rowResult2a.columns.get(columnAname).value, valueAname));
-    assertEquals(rowResult2a.columns.get(columnBname).value, valueBname);
+    LOG.info("Value=" +
+      Bytes.toStringBinary(rowResult2a.columns.get(columnBname).value.array()));
+    // First row is A.  It has a deleted colA and a valueC in colB.
+    assertEquals(rowResult2a.columns.get(columnBname).value, valueCname);
+    rowResult2a = handler.scannerGet(scanner2).get(0);
+    assertEquals(rowResult2a.columns.size(), 2);
+    assertEquals(rowResult2a.columns.get(columnAname).value, valueCname);
+    assertEquals(rowResult2a.columns.get(columnBname).value, valueDname);
     closeScanner(scanner2, handler);
 
     // Test a scanner on the first row and first column only, no timestamp
