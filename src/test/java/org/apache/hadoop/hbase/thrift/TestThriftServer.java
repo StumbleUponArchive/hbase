@@ -80,6 +80,53 @@ public class TestThriftServer extends HBaseClusterTestCase {
     doTestTableTimestampsAndColumns();
     doTestTableScanners();
     doTestOneShotScan();
+    doTestPrefixScan();
+  }
+
+  /**
+   * Test prefix scan works.
+   * @throws Exception
+   */
+  public void doTestPrefixScan() throws Exception {
+    ByteBuffer prefix = $bb("prefix");
+    ThriftServer.HBaseHandler handler = new ThriftServer.HBaseHandler(this.conf);
+    handler.createTable(prefix, getColumnDescriptors());
+    final int rowCount = 10;
+    final String prefixToFind = "bbb";
+    for (int i = 0; i < rowCount; i++) {
+      // Add to tableAname on rowAname:
+      // columnA -> valueA
+      // columnB -> valueB
+      handler.mutateRow(prefix, $bb("aaa" + (i < 10? "0" + i: i)), getMutations());
+    }
+    for (int i = 0; i < rowCount; i++) {
+      // Add to tableAname on rowAname:
+      // columnA -> valueA
+      // columnB -> valueB
+      handler.mutateRow(prefix, $bb(prefixToFind + (i < 10? "0" + i: i)), getMutations());
+    }
+    for (int i = 0; i < rowCount; i++) {
+      // Add to tableAname on rowAname:
+      // columnA -> valueA
+      // columnB -> valueB
+      handler.mutateRow(prefix, $bb("ccc" + (i < 10? "0" + i: i)), getMutations());
+    }
+    ScanSpec spec = new ScanSpec();
+    spec.setColumns(getColumnList(true, true));
+    spec.setTableName(prefix);
+    spec.setPrefixScan(true);
+    spec.setStartRow(Bytes.toBytes(prefixToFind));
+    ScanResult results = handler.scan(spec, rowCount * 2, false);
+    for (TRowResult result: results.getResults()) {
+      LOG.info(Bytes.toString(result.getRow()));
+    }
+    int count = results.getResultsSize();
+    assertEquals(rowCount, count);
+    for (TRowResult result: results.getResults()) {
+      String row = Bytes.toString(result.getRow());
+      LOG.info(row);
+      assertTrue(row.startsWith(prefixToFind));
+    }
   }
 
   /**
