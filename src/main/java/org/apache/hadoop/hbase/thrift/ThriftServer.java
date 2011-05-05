@@ -18,8 +18,12 @@
 
 package org.apache.hadoop.hbase.thrift;
 
-import static org.apache.hadoop.hbase.util.Bytes.getBytes;
-
+import javax.management.InstanceAlreadyExistsException;
+import javax.management.MBeanRegistrationException;
+import javax.management.MBeanServer;
+import javax.management.MalformedObjectNameException;
+import javax.management.NotCompliantMBeanException;
+import javax.management.ObjectName;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
@@ -28,8 +32,10 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -37,14 +43,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import javax.management.InstanceAlreadyExistsException;
-import javax.management.MBeanRegistrationException;
-import javax.management.MBeanServer;
-import javax.management.MalformedObjectNameException;
-import javax.management.NotCompliantMBeanException;
-import javax.management.ObjectName;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -56,6 +56,7 @@ import org.apache.commons.cli.PosixParser;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.Chore;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -63,6 +64,7 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HServerAddress;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
+import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
@@ -103,6 +105,8 @@ import org.apache.thrift.transport.TNonblockingServerTransport;
 import org.apache.thrift.transport.TServerSocket;
 import org.apache.thrift.transport.TServerTransport;
 import org.apache.thrift.transport.TTransportFactory;
+
+import static org.apache.hadoop.hbase.util.Bytes.getBytes;
 
 /**
  * ThriftServer - this class starts up a Thrift server which implements the
@@ -210,6 +214,22 @@ public class ThriftServer {
         return t;
       }
     }
+
+    private Stoppable STOPPABLE = new Stoppable() {
+      final AtomicBoolean stop = new AtomicBoolean(false);
+
+      @Override
+      public boolean isStopped() {
+        return this.stop.get();
+      }
+
+      @Override
+      public void stop(String why) {
+        LOG.info("STOPPING BECAUSE: " + why);
+        this.stop.set(true);
+      }
+
+    };
     protected Configuration conf;
     protected HBaseAdmin admin = null;
     protected final Log LOG = LogFactory.getLog(this.getClass().getName());
@@ -345,6 +365,9 @@ public class ThriftServer {
           60, TimeUnit.SECONDS,
           queue,
           new DaemonThreadFactory());
+
+      ScannerCleaner cleaner = new ScannerCleaner("Scanner cleaner", 300000, STOPPABLE);
+      cleaner.start();
 
       try {
         final MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
@@ -938,7 +961,7 @@ public class ThriftServer {
         } else {
           ScannerAndNext sn = new ScannerAndNext(scanner,nextOne);
           scannerId = nextScannerId.incrementAndGet();
-          newScannerMap.put(scannerId, sn);
+            newScannerMap.put(scannerId, sn);
         }
 
         // build our response.
@@ -1275,6 +1298,50 @@ public class ThriftServer {
         return columns;
       } catch (IOException e) {
         throw new IOError(e.getMessage());
+      }
+    }
+
+    /**
+     * Class that's used to clean the scanners that aren't closed after the
+     * defined period of time. Only works for the new scanners
+     */
+    class ScannerCleaner extends Chore {
+
+      private Set<Integer> scannerCountingSet =
+          new HashSet<Integer>();
+
+      public ScannerCleaner(String name, final int p,
+                            final Stoppable stopper) {
+        super(name, p, stopper);
+      }
+
+      @Override
+      protected void chore() {
+        Set<Integer> newSet = new HashSet<Integer>();
+
+        // Iterate over all the current scanners
+        for (java.util.Map.Entry<Integer, ScannerAndNext> scanner :
+            newScannerMap.entrySet()) {
+          Integer key = scanner.getKey();
+
+          // check if we saw it already. If we did, then try to print what
+          // would have been the next row (for debuging the client) and close
+          if (scannerCountingSet.contains(key)) {
+            ScannerAndNext scan = scanner.getValue();
+            Result next = scan.next;
+            LOG.info("ATTENTION This scanner has been there for a long time," +
+                " closing: " + key + (scan.next == null ? "" :
+                ", and here's the next row: " + next.toString()) );
+            newScannerMap.remove(key);
+            // This is normally expired
+            scan.scanner.close();
+          } else {
+            // else we add it to the set of scanners that we'll check next time
+            newSet.add(key);
+          }
+        }
+        // replace the set of seen scanners with the new one
+        scannerCountingSet = newSet;
       }
     }
   }
