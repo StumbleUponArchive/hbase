@@ -32,10 +32,8 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
@@ -237,11 +235,13 @@ public class ThriftServer {
     static class ScannerAndNext {
       final ResultScanner scanner;
       final Result next;
+      final long lastTimeUsed;
 
       public ScannerAndNext(ResultScanner scanner,
                             Result next) {
         this.scanner = scanner;
         this.next = next;
+        this.lastTimeUsed = System.currentTimeMillis();
       }
     }
 
@@ -987,15 +987,9 @@ public class ThriftServer {
     @Override
     public ScanResult scanMore(int scannerId, int nRows, boolean closeAfter)
         throws IOError, TException {
-      ScannerAndNext sn;
-
-      // Two threads scanning the same scanner would be very bad.
-      synchronized (newScannerMap) {
-        sn = newScannerMap.get(scannerId);
-        if (sn == null) {
-          throw new IOError("No such scanner: " + scannerId);
-        }
-        newScannerMap.remove(scannerId);
+      ScannerAndNext sn = newScannerMap.remove(scannerId);
+      if (sn == null) {
+        throw new IOError("No such scanner: " + scannerId);
       }
 
       try {
@@ -1003,7 +997,7 @@ public class ThriftServer {
         // If we squirreled off a result in sn.next, need to produce it here.
         if (sn.next !=  null) {
           // We have a result from previous scan invocation.  Count it in.
-          Result [] interrim = nRows <= 1? interrim = new Result [0]:
+          Result [] interrim = nRows <= 1? new Result [0]:
             sn.scanner.next(nRows - 1);
           // Now assemble in data the fetched results and what we had up in
           // sn.next, saved off from last call.
@@ -1039,7 +1033,6 @@ public class ThriftServer {
         }
         return scanResult;
       } catch (IOException ex) {
-        newScannerMap.remove(scannerId);
         sn.scanner.close(); // scanner is dead now.
 
         throw new IOError(ex.getMessage());
@@ -1307,27 +1300,25 @@ public class ThriftServer {
      */
     class ScannerCleaner extends Chore {
 
-      private Set<Integer> scannerCountingSet =
-          new HashSet<Integer>();
+      final int timeout;
 
       public ScannerCleaner(String name, final int p,
                             final Stoppable stopper) {
         super(name, p, stopper);
+        this.timeout = p;
       }
 
       @Override
       protected void chore() {
-        Set<Integer> newSet = new HashSet<Integer>();
 
         // Iterate over all the current scanners
-        for (java.util.Map.Entry<Integer, ScannerAndNext> scanner :
+        for (java.util.Map.Entry<Integer, ScannerAndNext> scanAndNext :
             newScannerMap.entrySet()) {
-          Integer key = scanner.getKey();
+          ScannerAndNext scan = scanAndNext.getValue();
 
-          // check if we saw it already. If we did, then try to print what
-          // would have been the next row (for debuging the client) and close
-          if (scannerCountingSet.contains(key)) {
-            ScannerAndNext scan = scanner.getValue();
+          // if over the timeout, clean
+          if ((System.currentTimeMillis() - scan.lastTimeUsed) > this.timeout) {
+            Integer key = scanAndNext.getKey();
             Result next = scan.next;
             LOG.info("ATTENTION This scanner has been there for a long time," +
                 " closing: " + key + (scan.next == null ? "" :
@@ -1335,13 +1326,8 @@ public class ThriftServer {
             newScannerMap.remove(key);
             // This is normally expired
             scan.scanner.close();
-          } else {
-            // else we add it to the set of scanners that we'll check next time
-            newSet.add(key);
           }
         }
-        // replace the set of seen scanners with the new one
-        scannerCountingSet = newSet;
       }
     }
   }

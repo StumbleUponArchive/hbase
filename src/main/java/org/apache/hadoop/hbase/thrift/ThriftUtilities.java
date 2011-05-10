@@ -127,15 +127,15 @@ public class ThriftUtilities {
    * @return Thrift TRowResult array
    */
   static public List<TRowResult> rowResultFromHBase(Result[] in) {
-    List<TRowResult> results = new ArrayList<TRowResult>();
-    for ( Result result_ : in) {
-        if(result_ == null || result_.isEmpty()) {
+    List<TRowResult> results = new ArrayList<TRowResult>(in.length);
+    for (Result result_ : in) {
+        if (result_ == null || result_.isEmpty()) {
             continue;
         }
         TRowResult result = new TRowResult();
         result.row = ByteBuffer.wrap(result_.getRow());
         result.columns = new TreeMap<ByteBuffer, TCell>();
-        for(KeyValue kv : result_.sorted()) {
+        for (KeyValue kv : result_.sorted()) {
           result.columns.put(
               ByteBuffer.wrap(KeyValue.makeColumn(kv.getFamily(),
                   kv.getQualifier())),
