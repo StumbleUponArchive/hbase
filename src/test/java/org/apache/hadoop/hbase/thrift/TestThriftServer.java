@@ -31,7 +31,6 @@ import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.client.Result;
 import org.apache.hadoop.hbase.client.ResultScanner;
 import org.apache.hadoop.hbase.client.Scan;
-import org.apache.hadoop.hbase.regionserver.HRegionServer;
 import org.apache.hadoop.hbase.thrift.generated.BatchMutation;
 import org.apache.hadoop.hbase.thrift.generated.ColumnDescriptor;
 import org.apache.hadoop.hbase.thrift.generated.IOError;
@@ -245,6 +244,20 @@ public class TestThriftServer extends HBaseClusterTestCase {
     // Assert that changes were made to rowA
     List<TCell> cells = handler.get(tableAname, rowAname, columnAname);
     assertFalse(cells.size() > 0);
+
+    // Check parallelGet works tooooo
+    List<ByteBuffer> rows = new ArrayList<ByteBuffer>();
+    rows.add(rowAname);
+    List<TRowResult> rowresults = handler.parallelGet(tableAname, columnBname, rows);
+    assertEquals(1, rowresults.size());
+    TRowResult rowresult = rowresults.get(0);
+    assertEquals(valueCname, rowresult.getColumns().get(columnBname).value);
+    // Test parallelGet passing null column; should return all
+    rowresults = handler.parallelGet(tableAname, null, rows);
+    assertEquals(1, rowresults.size());
+    rowresult = rowresults.get(0);
+    assertEquals(valueCname, rowresult.getColumns().get(columnBname).value);
+
     assertEquals(valueCname, handler.get(tableAname, rowAname, columnBname).get(0).value);
     List<TCell> versions = handler.getVer(tableAname, rowAname, columnBname, MAXVERSIONS);
     assertEquals(valueCname, versions.get(0).value);

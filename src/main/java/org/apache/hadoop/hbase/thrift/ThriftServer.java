@@ -1102,12 +1102,15 @@ public class ThriftServer {
       try {
         HTable table = getTable(tableName);
 
-        byte [][] famAndQual = KeyValue.parseColumn(getBytes(column));
+        byte [][] famAndQual = column == null?
+          null: KeyValue.parseColumn(getBytes(column));
 
         List<Row> gets = new ArrayList<Row>(rows.size());
         for (ByteBuffer row : rows) {
           Get g = new Get(getBytes(row));
-          if (famAndQual.length == 1) {
+          if (famAndQual == null) {
+            // Return all
+          } else if (famAndQual.length == 1) {
             g.addFamily(famAndQual[0]);
           } else {
             g.addColumn(famAndQual[0], famAndQual[1]);
