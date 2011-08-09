@@ -34,15 +34,18 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -137,6 +140,10 @@ public class ThriftServer {
     public void setMaxPoolSize(int newMaxSize);
 
     public long getFailedIncrements();
+
+    public long getSuccessfulCoalescings();
+
+    public long getTotalIncrements();
   }
 
 
@@ -183,7 +190,15 @@ public class ThriftServer {
       pool.setMaximumPoolSize(newMaxSize);
     }
     public long getFailedIncrements() {
-      return failedIncrements;
+      return failedIncrements.get();
+    }
+
+    public long getSuccessfulCoalescings() {
+      return successfulCoalescings.get();
+    }
+
+    public long getTotalIncrements() {
+      return totalIncrements.get();
     }
 
     static class DaemonThreadFactory implements ThreadFactory {
@@ -264,11 +279,18 @@ public class ThriftServer {
 
     private final ThreadPoolExecutor pool;
 
-    private int failQueueSize = 10000;
-    private static final int CORE_POOL_SIZE = 35;
+    private int failQueueSize = 500000;
+    private static final int CORE_POOL_SIZE = 2;
 
-    private volatile long failedIncrements = 0;
+    private final AtomicLong failedIncrements = new AtomicLong();
+    private final AtomicLong successfulCoalescings = new AtomicLong();
+    private final AtomicLong totalIncrements = new AtomicLong();
 
+    // For the initialSize we set as high as it should normally reach
+    // The loadFactor is default
+    // The concurrencyLevel is set to the number of apache workers
+    private final ConcurrentMap<KeyValue, Long> countersMap =
+        new ConcurrentHashMap<KeyValue, Long>(failQueueSize/2, 0.75f, 1500);
 
     /**
      * Returns a list of all the column families for a given htable.
@@ -859,12 +881,45 @@ public class ThriftServer {
     @Override
     public boolean queueIncrementColumnValues(List<Increment> increments) throws TException {
       if (pool.getQueue().size() > failQueueSize) {
-        ++ failedIncrements;
+        failedIncrements.incrementAndGet();
         return false;
       }
+      for (Increment i : increments) {
+        totalIncrements.incrementAndGet();
+        byte[][]famAndQf = KeyValue.parseColumn(i.getColumn());
+        if (famAndQf.length != 2) {
+          throw new TException("Bad column: " + Bytes.toString(i.getColumn()));
+        }
 
-      // queue it up
-      Callable<Integer> callable = createIncCallable(increments);
+        // ugly!!!
+        // Using KV as it has all the facilities to easily store/compare/hash
+        // multiple byte[]. Less hacky would be to create our own structure
+        KeyValue key = new KeyValue(i.getRow(), famAndQf[0],
+            famAndQf[1], i.getTable());
+        long currentAmount = i.getAmount();
+        // Spin until able to insert the value back without collisions
+        while (true) {
+          Long value = countersMap.remove(key);
+          if (value == null) {
+            // There was nothing there, create a new value
+            value = new Long(currentAmount);
+          } else {
+            value += currentAmount;
+            successfulCoalescings.incrementAndGet();
+          }
+          // Try to put the value, only if there was none
+          Long oldValue = countersMap.putIfAbsent(key, value);
+          if (oldValue == null) {
+            // We were able to put it in, we're done
+            break;
+          }
+          // Someone else was able to put a value in, so let's remember our
+          // current value (plus what we picked up) and retry to add it in
+          currentAmount = value;
+        }
+      }
+       // queue it up
+      Callable<Integer> callable = createIncCallable();
       pool.submit(callable);
 
       return true;
@@ -1039,34 +1094,38 @@ public class ThriftServer {
       }
     }
 
-    private Callable<Integer> createIncCallable(final List<Increment> incrs) {
+    private Callable<Integer> createIncCallable() {
       return new Callable<Integer>() {
         @Override
         public Integer call() throws Exception {
           int failures = 0;
-          for (Increment incr : incrs) {
+          Set<KeyValue> keys = countersMap.keySet();
+          for (KeyValue kv : keys) {
+            Long counter = countersMap.remove(kv);
+            if (counter == null) {
+              continue;
+            }
             try {
-              HTable table = getTable(incr.getTable());
-              byte [][]famAndQf = KeyValue.parseColumn(incr.getColumn());
-              if (famAndQf.length != 2)
-                throw new IOException("Bad column: " + Bytes.toString(incr.getColumn()));
+              HTable table = getTable(kv.getValue());
               if (failures > 2) {
                 throw new IOException("Auto-Fail rest of ICVs");
               }
               table.incrementColumnValue(
-                  incr.getRow(),
-                  famAndQf[0],
-                  famAndQf[1],
-                  incr.getAmount());
+                  kv.getRow(),
+                  kv.getFamily(),
+                  kv.getQualifier(),
+                  counter);
             } catch (IOException e) {
               // log failure of increment
               failures++;
               LOG.error("FAILED_ICV: "
-                  + Bytes.toString(incr.getTable()) + ", "
-                  + Bytes.toStringBinary(incr.getRow()) + ", "
-                  + Bytes.toStringBinary(incr.getColumn()) + ", "
-                  + incr.getAmount());
+                  + Bytes.toString(kv.getValue()) + ", "
+                  + Bytes.toStringBinary(kv.getRow()) + ", "
+                  + Bytes.toStringBinary(kv.getFamily()) + ", "
+                  + Bytes.toStringBinary(kv.getQualifier()) + ", "
+                  + counter);
             }
+
           }
           return failures;
         }

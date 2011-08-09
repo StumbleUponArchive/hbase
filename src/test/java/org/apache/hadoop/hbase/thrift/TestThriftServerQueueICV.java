@@ -5,14 +5,12 @@ import static org.mockito.Matchers.anyLong;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
-import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,11 +20,10 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-import javax.management.MBeanServer;
-import javax.management.ObjectName;
-
 import junit.framework.TestCase;
 
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.client.HBaseAdmin;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.hadoop.hbase.thrift.generated.Increment;
@@ -40,8 +37,13 @@ import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 
 @RunWith(PowerMockRunner.class)
-@PowerMockIgnore("javax.management.*")
-@PrepareForTest( { ThriftServer.HBaseHandler.class } )
+@PowerMockIgnore({"org.w3c.*",
+    "javax.xml.*",
+    "javax.management.*",
+    "com.sun.org.apache.xerces.*",
+    "org.apache.log4j.*",
+    "org.apache.commons.logging.*"})
+@PrepareForTest( { ThriftServer.HBaseHandler.class, HBaseConfiguration.class } )
 public class TestThriftServerQueueICV extends TestCase {
 
   private ThreadPoolExecutor pool;
@@ -51,11 +53,15 @@ public class TestThriftServerQueueICV extends TestCase {
 
   @Override
   public void setUp() throws Exception {
-    disableJMX();
 
     // Common mockout remove HBA calls into noops basically.
     HBaseAdmin hbaseAdminMocked = mock(HBaseAdmin.class);
-    PowerMockito.whenNew(HBaseAdmin.class).withArguments(any()).thenReturn(hbaseAdminMocked);
+    PowerMockito.whenNew(HBaseAdmin.class).withArguments(any()).
+        thenReturn(hbaseAdminMocked);
+    // Somehow powermockito messes up with .xml files loading and this method
+    // throws an exception
+    PowerMockito.suppress(HBaseConfiguration.class.
+        getDeclaredMethod("checkDefaultsVersion", Configuration.class));
 
     this.pool = mock(ThreadPoolExecutor.class);
     PowerMockito.whenNew(ThreadPoolExecutor.class).
@@ -65,6 +71,7 @@ public class TestThriftServerQueueICV extends TestCase {
         .withArguments(any(), any(), any(), any(), any(), any())
         .thenReturn(pool);
 
+
     // Create a sub-mock.
     this.queue = mock(BlockingQueue.class);
     when(pool.getQueue()).thenReturn(this.queue);
@@ -73,28 +80,16 @@ public class TestThriftServerQueueICV extends TestCase {
     failQueueSize = handler.getFailQueueSize();
   }
 
-  private void disableJMX() throws Exception {
-    MBeanServer mbs = mock(MBeanServer.class);
-    // Remove the JMX to prevent spurious log messages
-    PowerMockito.mockStatic(ManagementFactory.class);
-    when(ManagementFactory.getPlatformMBeanServer()).thenReturn(mbs);
-    PowerMockito.whenNew(ObjectName.class)
-        .withParameterTypes(String.class)
-        .withArguments(any())
-        .thenReturn(null);
-  }
-
-
   public void testQueueSuccessful() throws Exception {
     when(queue.size())
         .thenReturn(0)
         .thenReturn(failQueueSize);
 
-    List mList = mock(List.class);
+    List<Increment> list = new ArrayList<Increment>();
 
-    assertTrue(handler.queueIncrementColumnValues(mList));
+    assertTrue(handler.queueIncrementColumnValues(list));
 
-    assertTrue(handler.queueIncrementColumnValues(mList));
+    assertTrue(handler.queueIncrementColumnValues(list));
 
     verify(pool, times(2)).submit(any(Callable.class));
   }
@@ -103,9 +98,9 @@ public class TestThriftServerQueueICV extends TestCase {
     when(queue.size()).thenReturn(failQueueSize+1)
         .thenReturn(failQueueSize+1000);
 
-    List mList = mock(List.class);
-    assertFalse(handler.queueIncrementColumnValues(mList));
-    assertFalse(handler.queueIncrementColumnValues(mList));
+    List<Increment> list = new ArrayList<Increment>();
+    assertFalse(handler.queueIncrementColumnValues(list));
+    assertFalse(handler.queueIncrementColumnValues(list));
 
     assertEquals(2, handler.getFailedIncrements());
     verify(pool, never()).submit(any(Callable.class));
@@ -116,10 +111,10 @@ public class TestThriftServerQueueICV extends TestCase {
         .thenReturn(failQueueSize+1000)
         .thenReturn(20);
 
-    List mList = mock(List.class);
-    assertTrue(handler.queueIncrementColumnValues(mList));
-    assertFalse(handler.queueIncrementColumnValues(mList));
-    assertTrue(handler.queueIncrementColumnValues(mList));
+    List<Increment> list = new ArrayList<Increment>();
+    assertTrue(handler.queueIncrementColumnValues(list));
+    assertFalse(handler.queueIncrementColumnValues(list));
+    assertTrue(handler.queueIncrementColumnValues(list));
 
     verify(pool, times(2)).submit(any(Callable.class));
   }
@@ -205,14 +200,5 @@ public class TestThriftServerQueueICV extends TestCase {
 
     // the callable returns the # of failures we encountered
     assertEquals(4, c.call());
-
-    reset(htm);
-    when(htm.incrementColumnValue(Matchers.<byte[]>any(),
-        Matchers.<byte[]>any(),
-        Matchers.<byte[]>any(),
-        anyLong()))
-        .thenReturn(0L)
-        .thenThrow(new IOException());
-    assertEquals(3, c.call());
   }
 }
