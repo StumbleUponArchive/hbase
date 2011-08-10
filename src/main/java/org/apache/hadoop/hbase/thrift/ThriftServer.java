@@ -280,7 +280,7 @@ public class ThriftServer {
     private final ThreadPoolExecutor pool;
 
     private int failQueueSize = 500000;
-    private static final int CORE_POOL_SIZE = 2;
+    private static final int CORE_POOL_SIZE = 5;
 
     private final AtomicLong failedIncrements = new AtomicLong();
     private final AtomicLong successfulCoalescings = new AtomicLong();
