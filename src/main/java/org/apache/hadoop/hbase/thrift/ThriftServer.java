@@ -144,6 +144,8 @@ public class ThriftServer {
     public long getSuccessfulCoalescings();
 
     public long getTotalIncrements();
+
+    public long getCountersMapSize();
   }
 
 
@@ -199,6 +201,10 @@ public class ThriftServer {
 
     public long getTotalIncrements() {
       return totalIncrements.get();
+    }
+
+    public long getCountersMapSize() {
+      return countersMap.size();
     }
 
     static class DaemonThreadFactory implements ThreadFactory {
@@ -280,7 +286,7 @@ public class ThriftServer {
     private final ThreadPoolExecutor pool;
 
     private int failQueueSize = 500000;
-    private static final int CORE_POOL_SIZE = 5;
+    private static final int CORE_POOL_SIZE = 1;
 
     private final AtomicLong failedIncrements = new AtomicLong();
     private final AtomicLong successfulCoalescings = new AtomicLong();
@@ -290,7 +296,7 @@ public class ThriftServer {
     // The loadFactor is default
     // The concurrencyLevel is set to the number of apache workers
     private final ConcurrentMap<KeyValue, Long> countersMap =
-        new ConcurrentHashMap<KeyValue, Long>(failQueueSize/2, 0.75f, 1500);
+        new ConcurrentHashMap<KeyValue, Long>(100000, 0.75f, 1500);
 
     /**
      * Returns a list of all the column families for a given htable.
@@ -384,7 +390,7 @@ public class ThriftServer {
 
       LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>();
       pool = new ThreadPoolExecutor(CORE_POOL_SIZE, CORE_POOL_SIZE,
-          60, TimeUnit.SECONDS,
+          50, TimeUnit.MILLISECONDS,
           queue,
           new DaemonThreadFactory());
 
@@ -880,7 +886,9 @@ public class ThriftServer {
 
     @Override
     public boolean queueIncrementColumnValues(List<Increment> increments) throws TException {
-      if (pool.getQueue().size() > failQueueSize) {
+      int countersMapSize = countersMap.size();
+      dynamicallySetCoreSize(countersMapSize);
+      if (countersMapSize > failQueueSize) {
         failedIncrements.incrementAndGet();
         return false;
       }
@@ -918,11 +926,47 @@ public class ThriftServer {
           currentAmount = value;
         }
       }
-       // queue it up
-      Callable<Integer> callable = createIncCallable();
-      pool.submit(callable);
+      // We limit the size of the queue simply because all we need is a
+      // notification that something needs to be incremented. No need
+      // for millions of callables that mean the same thing.
+      if (pool.getQueue().size() <= 1000) {
+         // queue it up
+        Callable<Integer> callable = createIncCallable();
+        pool.submit(callable);
+      }
 
       return true;
+    }
+
+    /**
+     * This method samples the incoming requests and, if selected, will
+     * check if the corePoolSize should be changed.
+     * @param countersMapSize
+     */
+    private void dynamicallySetCoreSize(int countersMapSize) {
+      // Here we are using countersMapSize as a random number, meaning this
+      // could be a Random object
+      if (countersMapSize % 10 != 0) {
+        return;
+      }
+      double currentRatio = (double)countersMapSize / (double)failQueueSize;
+      int newValue = 1;
+      if (currentRatio < 0.1) {
+        // it's 1
+      } else if (currentRatio < 0.3) {
+        newValue = 2;
+      } else if (currentRatio < 0.5) {
+        newValue = 4;
+      } else if (currentRatio < 0.7) {
+        newValue = 8;
+      } else if (currentRatio < 0.9) {
+        newValue = 14;
+      } else {
+        newValue = 22;
+      }
+      if (pool.getCorePoolSize() != newValue) {
+        pool.setCorePoolSize(newValue);
+      }
     }
 
     @Override

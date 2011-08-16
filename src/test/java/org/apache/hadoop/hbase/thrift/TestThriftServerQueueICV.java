@@ -6,6 +6,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.stub;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -50,6 +52,7 @@ public class TestThriftServerQueueICV extends TestCase {
   private BlockingQueue queue;
   private ThriftServer.HBaseHandler handler;
   private int failQueueSize;
+  private ConcurrentHashMap countersMap;
 
   @Override
   public void setUp() throws Exception {
@@ -62,6 +65,14 @@ public class TestThriftServerQueueICV extends TestCase {
     // throws an exception
     PowerMockito.suppress(HBaseConfiguration.class.
         getDeclaredMethod("checkDefaultsVersion", Configuration.class));
+
+    ConcurrentHashMap realMap = new ConcurrentHashMap();
+    countersMap = spy(realMap);
+    PowerMockito.whenNew(ConcurrentHashMap.class).withArguments(
+        Matchers.<Object>any(),
+        Matchers.<Object>any(),
+        Matchers.<Object>any()).
+        thenReturn(countersMap);
 
     this.pool = mock(ThreadPoolExecutor.class);
     PowerMockito.whenNew(ThreadPoolExecutor.class).
@@ -81,25 +92,21 @@ public class TestThriftServerQueueICV extends TestCase {
   }
 
   public void testQueueSuccessful() throws Exception {
-    when(queue.size())
-        .thenReturn(0)
-        .thenReturn(failQueueSize);
-
     List<Increment> list = new ArrayList<Increment>();
-
+    stub(countersMap.size()).toReturn(0);
     assertTrue(handler.queueIncrementColumnValues(list));
-
+    stub(countersMap.size()).toReturn(failQueueSize);
     assertTrue(handler.queueIncrementColumnValues(list));
 
     verify(pool, times(2)).submit(any(Callable.class));
   }
 
   public void testQueueFailure() throws Exception {
-    when(queue.size()).thenReturn(failQueueSize+1)
-        .thenReturn(failQueueSize+1000);
-
     List<Increment> list = new ArrayList<Increment>();
+    stub(countersMap.size()).toReturn(failQueueSize+1);
     assertFalse(handler.queueIncrementColumnValues(list));
+
+    stub(countersMap.size()).toReturn(failQueueSize+1000);
     assertFalse(handler.queueIncrementColumnValues(list));
 
     assertEquals(2, handler.getFailedIncrements());
@@ -107,13 +114,12 @@ public class TestThriftServerQueueICV extends TestCase {
   }
 
   public void testMixedSuccessFail() throws Exception {
-    when(queue.size()).thenReturn(1)
-        .thenReturn(failQueueSize+1000)
-        .thenReturn(20);
-
     List<Increment> list = new ArrayList<Increment>();
+    stub(countersMap.size()).toReturn(1);
     assertTrue(handler.queueIncrementColumnValues(list));
+    stub(countersMap.size()).toReturn(failQueueSize+1000);
     assertFalse(handler.queueIncrementColumnValues(list));
+    stub(countersMap.size()).toReturn(20);
     assertTrue(handler.queueIncrementColumnValues(list));
 
     verify(pool, times(2)).submit(any(Callable.class));
