@@ -394,7 +394,10 @@ public class ThriftServer {
           queue,
           new DaemonThreadFactory());
 
-      ScannerCleaner cleaner = new ScannerCleaner("Scanner cleaner", 300000, STOPPABLE);
+      int scannerTimeout =
+          this.conf.getInt("hbase.thrift.scanner.cleaner.timeout", 6000000);
+      ScannerCleaner cleaner =
+          new ScannerCleaner("Scanner cleaner", scannerTimeout, STOPPABLE);
       cleaner.start();
 
       try {
