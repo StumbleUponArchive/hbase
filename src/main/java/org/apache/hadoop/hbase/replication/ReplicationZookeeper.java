@@ -21,6 +21,7 @@ package org.apache.hadoop.hbase.replication;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +45,8 @@ import org.apache.hadoop.hbase.zookeeper.ZooKeeperNodeTracker;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 import org.apache.hadoop.util.StringUtils;
 import org.apache.zookeeper.KeeperException;
+import org.apache.zookeeper.KeeperException.ConnectionLossException;
+import org.apache.zookeeper.KeeperException.SessionExpiredException;
 
 /**
  * This class serves as a helper for all things related to zookeeper
@@ -199,13 +202,30 @@ public class ReplicationZookeeper {
   }
 
   /**
+   * Map of this cluster's peers for display.
+   * @return A map of peer ids to peer cluster keys
+   */
+  public Map<String,String> listPeers() {
+    Map<String,String> peers = new TreeMap<String,String>();
+    List<String> ids = null;
+    try {
+      ids = ZKUtil.listChildrenNoWatch(this.zookeeper, this.peersZNode);
+      for (String id : ids) {
+        peers.put(id, Bytes.toString(ZKUtil.getData(this.zookeeper,
+            ZKUtil.joinZNode(this.peersZNode, id))));
+      }
+    } catch (KeeperException e) {
+      this.abortable.abort("Cannot get the list of peers ", e);
+    }
+    return peers;
+  }
+  /**
    * Returns all region servers from given peer
    *
    * @param peerClusterId (byte) the cluster to interrogate
    * @return addresses of all region servers
    */
-  public List<HServerAddress> getSlavesAddresses(String peerClusterId)
-      throws KeeperException {
+  public List<HServerAddress> getSlavesAddresses(String peerClusterId) {
     if (this.peerClusters.size() == 0) {
       return new ArrayList<HServerAddress>(0);
     }
@@ -213,7 +233,27 @@ public class ReplicationZookeeper {
     if (peer == null) {
       return new ArrayList<HServerAddress>(0);
     }
-    peer.setRegionServers(fetchSlavesAddresses(peer.getZkw()));
+
+    List<HServerAddress> addresses;
+    try {
+      addresses = fetchSlavesAddresses(peer.getZkw());
+    } catch (KeeperException ke) {
+      if (ke instanceof ConnectionLossException
+          || ke instanceof SessionExpiredException) {
+        LOG.warn(
+            "Lost the ZooKeeper connection for peer " + peer.getClusterKey(),
+            ke);
+        try {
+          peer.reloadZkWatcher();
+        } catch(IOException io) {
+          LOG.warn(
+              "Creation of ZookeeperWatcher failed for peer "
+                  + peer.getClusterKey(), io);
+        }
+      }
+      addresses = Collections.emptyList();
+    }
+    peer.setRegionServers(addresses);
     return peer.getRegionServers();
   }
 
@@ -223,13 +263,9 @@ public class ReplicationZookeeper {
    * @return list of region server addresses or an empty list if the slave
    * is unavailable
    */
-  private List<HServerAddress> fetchSlavesAddresses(ZooKeeperWatcher zkw) {
-    try {
-      return ZKUtil.listChildrenAndGetAsAddresses(zkw, zkw.rsZNode);
-    } catch (KeeperException e) {
-      LOG.warn("Cannot get peer's region server addresses", e);
-      return new ArrayList<HServerAddress>(0);
-    }
+  private List<HServerAddress> fetchSlavesAddresses(ZooKeeperWatcher zkw)
+    throws KeeperException {
+    return ZKUtil.listChildrenAndGetAsAddresses(zkw, zkw.rsZNode);
   }
 
   /**
@@ -244,10 +280,6 @@ public class ReplicationZookeeper {
       return false;
     }
     if (this.peerClusters.containsKey(peerId)) {
-      return false;
-      // TODO remove when we support it
-    } else if (this.peerClusters.size() > 0) {
-      LOG.warn("Multiple slaves feature not supported");
       return false;
     }
     ReplicationPeer peer = getPeer(peerId);
@@ -285,10 +317,8 @@ public class ReplicationZookeeper {
       return null;
     }
 
-    ZooKeeperWatcher zkw = new ZooKeeperWatcher(otherConf,
-        "connection to cluster: " + peerId, this.abortable);
     return new ReplicationPeer(otherConf, peerId,
-        otherClusterKey, zkw);
+        otherClusterKey);
   }
 
   /**
@@ -332,8 +362,6 @@ public class ReplicationZookeeper {
     try {
       if (peerExists(id)) {
         throw new IllegalArgumentException("Cannot add existing peer");
-      } else if (countPeers() > 0) {
-        throw new IllegalStateException("Multi-slave isn't supported yet");
       }
       ZKUtil.createWithParents(this.zookeeper, this.peersZNode);
       ZKUtil.createAndWatch(this.zookeeper,
@@ -346,12 +374,6 @@ public class ReplicationZookeeper {
   private boolean peerExists(String id) throws KeeperException {
     return ZKUtil.checkExists(this.zookeeper,
           ZKUtil.joinZNode(this.peersZNode, id)) >= 0;
-  }
-
-  private int countPeers() throws KeeperException {
-    List<String> peers =
-        ZKUtil.listChildrenNoWatch(this.zookeeper, this.peersZNode);
-    return peers == null ? 0 : peers.size();
   }
 
   /**
@@ -389,11 +411,11 @@ public class ReplicationZookeeper {
   /**
    * Add a new log to the list of hlogs in zookeeper
    * @param filename name of the hlog's znode
-   * @param clusterId name of the cluster's znode
+   * @param peerId name of the cluster's znode
    */
-  public void addLogToList(String filename, String clusterId) {
+  public void addLogToList(String filename, String peerId) {
     try {
-      String znode = ZKUtil.joinZNode(this.rsServerNameZnode, clusterId);
+      String znode = ZKUtil.joinZNode(this.rsServerNameZnode, peerId);
       znode = ZKUtil.joinZNode(znode, filename);
       ZKUtil.createWithParents(this.zookeeper, znode);
     } catch (KeeperException e) {

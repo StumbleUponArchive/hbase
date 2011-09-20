@@ -19,11 +19,15 @@
  */
 package org.apache.hadoop.hbase.replication;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.Abortable;
 import org.apache.hadoop.hbase.HServerAddress;
 import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
 
@@ -33,7 +37,8 @@ import org.apache.hadoop.hbase.zookeeper.ZooKeeperWatcher;
  * of this class as it doesn't encapsulate any specific functionality e.g.
  * it's a container class.
  */
-public class ReplicationPeer {
+public class ReplicationPeer implements Abortable {
+  private static final Log LOG = LogFactory.getLog(ReplicationPeer.class);
 
   private final String clusterKey;
   private final String id;
@@ -50,14 +55,13 @@ public class ReplicationPeer {
    * @param conf configuration object to this peer
    * @param key cluster key used to locate the peer
    * @param id string representation of this peer's identifier
-   * @param zkw zookeeper connection to the peer
    */
   public ReplicationPeer(Configuration conf, String key,
-      String id, ZooKeeperWatcher zkw) {
+      String id) throws IOException {
     this.conf = conf;
     this.clusterKey = key;
     this.id = id;
-    this.zkw = zkw;
+    reloadZkWatcher();
   }
 
   /**
@@ -116,5 +120,18 @@ public class ReplicationPeer {
    */
   public Configuration getConfiguration() {
     return conf;
+  }
+
+  @Override
+  public void abort(String why, Throwable e) {
+    LOG.warn(why, e);
+  }
+
+  public void reloadZkWatcher() throws IOException {
+    if (zkw != null) {
+      zkw.close();
+    }
+    zkw = new ZooKeeperWatcher(conf,
+        "connection to cluster: " + id, this);
   }
 }

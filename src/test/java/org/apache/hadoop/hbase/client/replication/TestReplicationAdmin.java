@@ -9,6 +9,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hbase.HBaseTestingUtility;
 import org.apache.hadoop.hbase.HConstants;
+import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.replication.regionserver.ReplicationSourceManager;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -48,8 +49,13 @@ public class TestReplicationAdmin {
         HConstants.HREGION_OLDLOGDIR_NAME);
     Path logDir = new Path(TEST_UTIL.getTestDir(),
         HConstants.HREGION_LOGDIR_NAME);
-    manager = new ReplicationSourceManager(admin.getReplicationZk(),
-        conf, null, FileSystem.get(conf), replicating, logDir, oldLogDir);
+    manager = new ReplicationSourceManager(admin.getReplicationZk(), conf,
+        new Stoppable() {
+          @Override
+          public void stop(String why) {}
+          @Override
+          public boolean isStopped() {return false;}
+        }, FileSystem.get(conf), replicating, logDir, oldLogDir);
   }
 
   /**
@@ -77,16 +83,15 @@ public class TestReplicationAdmin {
       // OK!
     }
     assertEquals(1, admin.getPeersCount());
-    // Add a second, returns illegal since multi-slave isn't supported
+    // Add a second since multi-slave is supported
     try {
       admin.addPeer(ID_SECOND, KEY_SECOND);
-      fail();
     } catch (IllegalStateException iae) {
-      // OK!
+      fail();
     }
-    assertEquals(1, admin.getPeersCount());
+    assertEquals(2, admin.getPeersCount());
     // Remove the first peer we added
     admin.removePeer(ID_ONE);
-    assertEquals(0, admin.getPeersCount());
+    assertEquals(1, admin.getPeersCount());
   }
 }

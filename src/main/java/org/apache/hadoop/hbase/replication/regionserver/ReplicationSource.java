@@ -200,7 +200,7 @@ public class ReplicationSource extends Thread
   /**
    * Select a number of peers at random using the ratio. Mininum 1.
    */
-  private void chooseSinks() throws KeeperException {
+  private void chooseSinks() {
     this.currentPeers.clear();
     List<HServerAddress> addresses =
         this.zkHelper.getSlavesAddresses(peerClusterId);
@@ -407,8 +407,6 @@ public class ReplicationSource extends Thread
         Thread.sleep(this.sleepForRetries);
       } catch (InterruptedException e) {
         LOG.error("Interrupted while trying to connect to sinks", e);
-      } catch (KeeperException e) {
-        LOG.error("Error talking to zookeeper, retrying", e);
       }
     }
   }
@@ -600,10 +598,7 @@ public class ReplicationSource extends Thread
           } while (this.isActive() && down );
         } catch (InterruptedException e) {
           LOG.debug("Interrupted while trying to contact the peer cluster");
-        } catch (KeeperException e) {
-          LOG.error("Error talking to zookeeper, retrying", e);
         }
-
       }
     }
   }
