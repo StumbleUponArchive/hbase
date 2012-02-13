@@ -22,6 +22,7 @@ package org.apache.hadoop.hbase.replication.regionserver;
 import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -118,7 +119,7 @@ public class ReplicationSource extends Thread
   // List of all the dead region servers that had this queue (if recovered)
   private String[] deadRegionServers;
   // Maximum number of retries before taking bold actions
-  private long maxRetriesMultiplier;
+  private int maxRetriesMultiplier;
   // Current number of entries that we need to replicate
   private int currentNbEntries = 0;
   // Current number of operations (Put/Delete) that we need to replicate
@@ -160,7 +161,7 @@ public class ReplicationSource extends Thread
       this.entriesArray[i] = new HLog.Entry();
     }
     this.maxRetriesMultiplier =
-        this.conf.getLong("replication.source.maxretriesmultiplier", 10);
+        this.conf.getInt("replication.source.maxretriesmultiplier", 10);
     this.queue =
         new PriorityBlockingQueue<Path>(
             conf.getInt("hbase.regionserver.maxlogs", 32),
@@ -581,8 +582,19 @@ public class ReplicationSource extends Thread
           ioe = ((RemoteException) ioe).unwrapRemoteException();
           LOG.warn("Can't replicate because of an error on the remote cluster: ", ioe);
         } else {
-          LOG.warn("Can't replicate because of a local or network error: ", ioe);
+          if (ioe instanceof SocketTimeoutException) {
+            // This exception means we waited for more than 60s and nothing
+            // happened, the cluster is alive and calling it right away
+            // even for a test just makes things worse.
+            sleepForRetries("Encountered a SocketTimeoutException. Since the" +
+              "call to the remote cluster timed out, which is usually " +
+              "caused by a machine failure or a massive slowdown",
+              maxRetriesMultiplier * maxRetriesMultiplier);
+          } else {
+            LOG.warn("Can't replicate because of a local or network error: ", ioe);
+          }
         }
+
         try {
           boolean down;
           // Spin while the slave is down and we're not asked to shutdown/close
