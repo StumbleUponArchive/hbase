@@ -120,6 +120,8 @@ public class ReplicationSource extends Thread
   private String[] deadRegionServers;
   // Maximum number of retries before taking bold actions
   private int maxRetriesMultiplier;
+  // Socket timeouts require even bolder actions since we don't want to DDOS
+  private int socketTimeoutMultiplier;
   // Current number of entries that we need to replicate
   private int currentNbEntries = 0;
   // Current number of operations (Put/Delete) that we need to replicate
@@ -162,6 +164,7 @@ public class ReplicationSource extends Thread
     }
     this.maxRetriesMultiplier =
         this.conf.getInt("replication.source.maxretriesmultiplier", 10);
+    this.socketTimeoutMultiplier = maxRetriesMultiplier * maxRetriesMultiplier;
     this.queue =
         new PriorityBlockingQueue<Path>(
             conf.getInt("hbase.regionserver.maxlogs", 32),
@@ -589,7 +592,7 @@ public class ReplicationSource extends Thread
             sleepForRetries("Encountered a SocketTimeoutException. Since the" +
               "call to the remote cluster timed out, which is usually " +
               "caused by a machine failure or a massive slowdown",
-              maxRetriesMultiplier * maxRetriesMultiplier);
+              this.socketTimeoutMultiplier);
           } else {
             LOG.warn("Can't replicate because of a local or network error: ", ioe);
           }
