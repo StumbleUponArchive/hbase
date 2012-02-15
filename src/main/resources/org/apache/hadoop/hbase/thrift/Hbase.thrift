@@ -117,6 +117,16 @@ struct TRowResult {
 }
 
 /**
+ * For batch increments.
+ */
+struct Increment {
+  1:Text table,
+  2:Text row,
+  3:Text column,
+  4:i64 amount
+}
+
+/**
  * A Scan object is used to specify scanner parameters when opening a scanner.
  */
 struct TScan {
@@ -155,6 +165,37 @@ exception IllegalArgument {
 exception AlreadyExists {
   1:string message
 }
+
+struct ScanResult {
+  1:list<TRowResult> results,
+  2:bool hasMore,
+  // If hasMore, then scannerId is set.
+  3:ScannerID scannerId,
+}
+
+struct ScanSpec {
+  // Table to scan.
+  1:Text tableName,
+
+  // List of columns to scan
+  2:list<Text> columns
+
+  3:Text startRow,
+
+  4:Text stopRow,
+
+  // Is this a prefix scan or not? If so, add a prefix filter with
+  // the 'startRow'.
+  5:bool prefixScan,
+
+  // Maximum number of versions to return.
+  6:i32 maxVersions,  // 1
+  // Time range clamping.
+  7:i64 startTime, // Long.MIN_VALUE
+  8:i64 endTime,  // Long.MAX_VALUE
+  9:bool cacheBlocks,  // true
+}
+
 
 //
 // Service 
@@ -778,4 +819,67 @@ service Hbase {
     /** id of a scanner returned by scannerOpen */
     1:ScannerID id
   ) throws (1:IOError io, 2:IllegalArgument ia)
+
+  /**
+   * Parallel get. For a given table and column, return for
+   * the given rows.
+   *
+   * @param tableName table to get from
+   * @param column column to get
+   * @param rows a list of rows to get
+   * @result list of TRowResult for each item
+   */
+  list<TRowResult> parallelGet(1:Text tableName,
+                               2:Text column,
+                               3:list<Text> rows)
+                               throws (1:IOError io)
+
+  /**
+   * Submit a series of updates to be processed. If the return value
+   * is true, then it worked and you can forget. If the return value
+   * is FALSE then there was a failure and none of the increments were
+   * queued to be applied.
+   */
+  bool queueIncrementColumnValues(1:list<Increment> increments)
+
+
+  /**
+   * Ignores startRow/stopRow in ScanSpec.
+   *
+   * endRows may be null/empty. If so, ensure spec.prefixScan=true
+   * or else you'll end up scanning the entire table.
+   *
+   * This call retrieves every row, so make sure to constrain your
+   * queries or else you will OOM thrift. There is a hard limit of
+   * X rows and you cant get more than that.
+   */
+  list<TRowResult> parallelScan(1:ScanSpec spec,
+                                2:list<Text> startRows,
+                                3:list<Text> endRows)
+                                throws (1:IOError io)
+
+
+  /**
+   * Execute a scan and return nRows worth in a single shot.
+   * If your scan has a start/end row you might get less rows.
+   * @param closeAfter close the scanner after this call
+   * regardless of if we are at the end or not.
+   */
+  ScanResult scan(1:ScanSpec spec,
+                  2:i32 nRows,
+                  3:bool closeAfter)
+                  throws (1:IOError io)
+
+  /**
+   * If a previous scan returned hasMore=true, use
+   * the provided scannerId to continue the scan until
+   * you get hasMore=false.
+   *
+   * @param closeAfter close the scanner after this call
+   * regardless of if we are at the end or not.
+   */
+  ScanResult scanMore(1:ScannerID scannerId,
+                      2:i32 nRows,
+                      3:bool closeAfter)
+                      throws (1:IOError io)
 }

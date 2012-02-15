@@ -203,6 +203,18 @@
       <url>https://repository.apache.org/content/repositories/releases/</url>
     </repository>
     <repository>
+      <id>cloudera</id>
+      <url>https://repository.cloudera.com/artifactory/cloudera-repos/</url>
+    </repository>
+    <repository>
+      <id>temp-thrift</id>
+      <name>Thrift 0.7.0-su</name>
+      <url>http://people.apache.org/~jdcryans/releases/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+    </repository>
+    <repository>
       <id>apache non-releases</id>
       <name>Apache non-releases</name>
       <url>http://people.apache.org/~stack/m2/repository</url>
@@ -253,6 +265,11 @@
         <enabled>true</enabled>
       </releases>
     </repository>
+    <repository>
+      <id>powermock-repo</id>
+      <url>http://powermock.googlecode.com/svn/repo/</url>
+    </repository>
+
   </repositories>
 
   <pluginRepositories>
@@ -842,7 +859,7 @@
     <protobuf.version>2.4.0a</protobuf.version>
     <slf4j.version>1.5.8</slf4j.version><!-- newer version available -->
     <stax-api.version>1.0.1</stax-api.version>
-    <thrift.version>0.7.0</thrift.version>
+    <thrift.version>0.7.0-su</thrift.version>
     <zookeeper.version>3.4.3</zookeeper.version>
     <hadoop-snappy.version>0.0.1-SNAPSHOT</hadoop-snappy.version>
 
@@ -1355,11 +1372,11 @@
         </property>
       </activation>
       <properties>
-        <hadoop.version>1.0.0</hadoop.version>
+        <hadoop.version>0.20.2-cdh3u3-SNAPSHOT</hadoop.version>
       </properties>
       <dependencies>
         <dependency>
-          <groupId>org.apache.hadoop</groupId>
+          <groupId>com.cloudera.hadoop</groupId>
           <artifactId>hadoop-core</artifactId>
           <version>${hadoop.version}</version>
           <optional>true</optional>
@@ -1387,7 +1404,7 @@
           </exclusions>
         </dependency>
         <dependency>
-          <groupId>org.apache.hadoop</groupId>
+          <groupId>com.cloudera.hadoop</groupId>
           <artifactId>hadoop-test</artifactId>
           <version>${hadoop.version}</version>
           <optional>true</optional>
@@ -1467,7 +1484,7 @@
     <profile>
       <id>security</id>
       <properties>
-        <hadoop.version>1.0.0</hadoop.version>
+        <hadoop.version>0.20.2-cdh3u3-SNAPSHOT</hadoop.version>
       </properties>
       <build>
         <finalName>${artifactId}-${version}-security</finalName>
