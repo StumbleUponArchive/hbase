@@ -935,6 +935,9 @@ public class ThriftServer {
         if (famAndQf.length != 2) {
           throw new TException("Bad column: " + Bytes.toString(i.getColumn()));
         }
+        if (i.getRow().length == 0) {
+          throw new TException("The row key is empty, can't increment");
+        }
 
         // ugly!!!
         // Using KV as it has all the facilities to easily store/compare/hash
