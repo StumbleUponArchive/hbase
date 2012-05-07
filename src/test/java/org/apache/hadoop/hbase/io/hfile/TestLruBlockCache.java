@@ -665,11 +665,6 @@ public class TestLruBlockCache {
     }
 
     @Override
-    public BlockType getBlockType() {
-      return BlockType.DATA;
-    }
-
-    @Override
     public SchemaMetrics getSchemaMetrics() {
       return SchemaMetrics.getUnknownInstanceForTest();
     }
@@ -686,6 +681,11 @@ public class TestLruBlockCache {
 
     @Override
     public void serialize(ByteBuffer destination) {
+    }
+
+    @Override
+    public BlockType getBlockType() {
+      return BlockType.DATA;
     }
 
   }

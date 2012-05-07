@@ -292,7 +292,6 @@ public class CacheTestUtils {
     public SchemaMetrics getSchemaMetrics() {
       return SchemaMetrics.getUnknownInstanceForTest();
     }
-
   }
 
   private static HFileBlockPair[] generateHFileBlocks(int blockSize,

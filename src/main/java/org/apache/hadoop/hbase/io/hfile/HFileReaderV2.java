@@ -46,6 +46,9 @@ public class HFileReaderV2 extends AbstractHFileReader {
 
   private static final Log LOG = LogFactory.getLog(HFileReaderV2.class);
 
+  public static final Log BLOCK_LOG =
+    LogFactory.getLog("jd.block.logging");
+
   /**
    * The size of a (key length, value length) tuple that prefixes each entry in
    * a data block.
@@ -181,6 +184,22 @@ public class HFileReaderV2 extends AbstractHFileReader {
     return new ScannerV2(this, cacheBlocks, pread, isCompaction);
   }
 
+  public static void logBlock(BlockCacheKey key, Cacheable block, boolean cacheBlock, boolean inMemory) throws IOException {
+    if (BLOCK_LOG.isDebugEnabled()) {
+      StringBuilder builder = new StringBuilder("$");
+      builder.append(key.toString());
+      builder.append(";");
+      builder.append(block.getSerializedLength());
+      builder.append(";");
+      builder.append(cacheBlock);
+      builder.append(";");
+      builder.append(block.getBlockType().toString());
+      builder.append(";");
+      builder.append(inMemory);
+      BLOCK_LOG.debug(builder.toString());
+    }
+  }
+
   /**
    * @param metaBlockName
    * @param cacheBlock Add block to cache, if found
@@ -224,7 +243,11 @@ public class HFileReaderV2 extends AbstractHFileReader {
           // Return a distinct 'shallow copy' of the block,
           // so pos does not get messed by the scanner
           cacheHits.incrementAndGet();
+
           getSchemaMetrics().updateOnCacheHit(BlockCategory.META, false);
+
+          logBlock(cacheKey, cachedBlock, cacheBlock, cacheConf.isInMemory());
+
           return cachedBlock.getBufferWithoutHeader();
         }
         // Cache Miss, please load.
@@ -237,6 +260,9 @@ public class HFileReaderV2 extends AbstractHFileReader {
       final long delta = System.nanoTime() - startTimeNs;
       HFile.offerReadLatency(delta, true);
       getSchemaMetrics().updateOnCacheMiss(BlockCategory.META, false, delta);
+
+
+      logBlock(cacheKey, metaBlock, cacheBlock, cacheConf.isInMemory());
 
       // Cache the block
       if (cacheBlock) {
@@ -317,6 +343,9 @@ public class HFileReaderV2 extends AbstractHFileReader {
                 "has wrong encoding: " + cachedBlock.getDataBlockEncoding() +
                 " (expected: " + dataBlockEncoder.getEncodingInCache() + ")");
           }
+
+          logBlock(cacheKey, cachedBlock, cacheBlock, cacheConf.isInMemory());
+
           return cachedBlock;
         }
         // Carry on, please load.
@@ -331,6 +360,7 @@ public class HFileReaderV2 extends AbstractHFileReader {
       validateBlockType(hfileBlock, expectedBlockType);
       passSchemaMetricsTo(hfileBlock);
       BlockCategory blockCategory = hfileBlock.getBlockType().getCategory();
+      logBlock(cacheKey, hfileBlock, cacheBlock, cacheConf.isInMemory());
 
       final long delta = System.nanoTime() - startTimeNs;
       HFile.offerReadLatency(delta, pread);
