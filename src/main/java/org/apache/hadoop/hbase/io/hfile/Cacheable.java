@@ -53,4 +53,9 @@ public interface Cacheable extends HeapSize {
    * @return CacheableDeserialzer instance.
    */
   public CacheableDeserializer<Cacheable> getDeserializer();
+
+  /**
+   * @return the block type of this cached HFile block
+   */
+  public BlockType getBlockType();
 }

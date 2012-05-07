@@ -546,5 +546,10 @@ public class TestLruBlockCache extends TestCase {
     public void serialize(ByteBuffer destination) {
     }
 
+    @Override
+    public BlockType getBlockType() {
+      return BlockType.DATA;
+    }
+
   }
 }

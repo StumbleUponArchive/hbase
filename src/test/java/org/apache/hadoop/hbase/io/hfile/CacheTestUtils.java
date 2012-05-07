@@ -275,6 +275,11 @@ public class CacheTestUtils {
       };
     }
 
+    @Override
+    public BlockType getBlockType() {
+      return BlockType.DATA;
+    }
+
   }
 
   private static HFileBlockPair[] generateHFileBlocks(int blockSize,

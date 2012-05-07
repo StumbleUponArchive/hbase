@@ -132,6 +132,10 @@ public class TestCachedBlockQueue extends TestCase {
             public void serialize(ByteBuffer destination) {
             }
 
+            @Override
+            public BlockType getBlockType() {
+              return BlockType.DATA;
+            }
 
             @Override
             public CacheableDeserializer<Cacheable> getDeserializer() {
