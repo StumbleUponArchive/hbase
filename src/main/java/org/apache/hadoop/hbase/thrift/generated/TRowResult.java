@@ -544,7 +544,7 @@ public class TRowResult implements org.apache.thrift.TBase<TRowResult, TRowResul
           for (int _i15 = 0; _i15 < _map14.size; ++_i15)
           {
             ByteBuffer _key16; // required
-            TCell _val17; // required
+            TCell _val17; // optional
             _key16 = iprot.readBinary();
             _val17 = new TCell();
             _val17.read(iprot);

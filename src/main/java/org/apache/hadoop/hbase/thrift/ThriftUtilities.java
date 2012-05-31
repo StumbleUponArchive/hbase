@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.TreeMap;
 
 import org.apache.hadoop.hbase.HColumnDescriptor;
+import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.client.Increment;
 import org.apache.hadoop.hbase.client.Result;
@@ -169,5 +170,10 @@ public class ThriftUtilities {
     byte[] qual = famAndQf.length == 1 ? new byte[0]: famAndQf[1];
     inc.addColumn(famAndQf[0], qual, tincrement.getAmmount());
     return inc;
+  }
+
+  public static TIncrement tiincrementFromThrift(org.apache.hadoop.hbase.thrift.generated.Increment inc) {
+    return new TIncrement().setTable(inc.getTable()).setRow(inc.getRow()).setColumn(inc.getColumn())
+                           .setAmmount(inc.getAmount());
   }
 }

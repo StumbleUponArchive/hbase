@@ -33,10 +33,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.Option;
@@ -52,34 +54,15 @@ import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.ServerName;
 import org.apache.hadoop.hbase.TableNotFoundException;
-import org.apache.hadoop.hbase.client.Delete;
-import org.apache.hadoop.hbase.client.Get;
-import org.apache.hadoop.hbase.client.HBaseAdmin;
-import org.apache.hadoop.hbase.client.HTable;
-import org.apache.hadoop.hbase.client.Increment;
-import org.apache.hadoop.hbase.client.OperationWithAttributes;
-import org.apache.hadoop.hbase.client.Put;
-import org.apache.hadoop.hbase.client.Result;
-import org.apache.hadoop.hbase.client.ResultScanner;
-import org.apache.hadoop.hbase.client.Scan;
+import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.filter.Filter;
 import org.apache.hadoop.hbase.filter.ParseFilter;
 import org.apache.hadoop.hbase.filter.PrefixFilter;
 import org.apache.hadoop.hbase.filter.WhileMatchFilter;
 import org.apache.hadoop.hbase.security.User;
 import org.apache.hadoop.hbase.thrift.CallQueue.Call;
-import org.apache.hadoop.hbase.thrift.generated.AlreadyExists;
-import org.apache.hadoop.hbase.thrift.generated.BatchMutation;
-import org.apache.hadoop.hbase.thrift.generated.ColumnDescriptor;
-import org.apache.hadoop.hbase.thrift.generated.Hbase;
-import org.apache.hadoop.hbase.thrift.generated.IOError;
-import org.apache.hadoop.hbase.thrift.generated.IllegalArgument;
+import org.apache.hadoop.hbase.thrift.generated.*;
 import org.apache.hadoop.hbase.thrift.generated.Mutation;
-import org.apache.hadoop.hbase.thrift.generated.TCell;
-import org.apache.hadoop.hbase.thrift.generated.TIncrement;
-import org.apache.hadoop.hbase.thrift.generated.TRegionInfo;
-import org.apache.hadoop.hbase.thrift.generated.TRowResult;
-import org.apache.hadoop.hbase.thrift.generated.TScan;
 import org.apache.hadoop.hbase.util.Addressing;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.hbase.util.Strings;
@@ -403,7 +386,7 @@ public class ThriftServerRunner implements Runnable {
     protected final Log LOG = LogFactory.getLog(this.getClass().getName());
 
     // nextScannerId and scannerMap are used to manage scanner state
-    protected int nextScannerId = 0;
+    protected AtomicInteger nextScannerId = new AtomicInteger();
     protected HashMap<Integer, ResultScanner> scannerMap = null;
     private ThriftMetrics metrics = null;
 
@@ -465,7 +448,7 @@ public class ThriftServerRunner implements Runnable {
      * @return integer scanner id
      */
     protected synchronized int addScanner(ResultScanner scanner) {
-      int id = nextScannerId++;
+      int id = nextScannerId.getAndIncrement();
       scannerMap.put(id, scanner);
       return id;
     }
@@ -1394,6 +1377,231 @@ public class ThriftServerRunner implements Runnable {
       }
     }
 
+    @Override
+    public List<TRowResult> parallelGet(ByteBuffer tableName, ByteBuffer column, List<ByteBuffer> rows) throws IOError, TException {
+      try {
+        HTable table = getTable(tableName);
+
+        byte [][] famAndQual = column == null?
+            null: KeyValue.parseColumn(getBytes(column));
+
+        List<Row> gets = new ArrayList<Row>(rows.size());
+        for (ByteBuffer row : rows) {
+          Get g = new Get(getBytes(row));
+          if (famAndQual == null) {
+            // Return all
+          } else if (famAndQual.length == 1) {
+            g.addFamily(famAndQual[0]);
+          } else {
+            g.addColumn(famAndQual[0], famAndQual[1]);
+          }
+          gets.add(g);
+        }
+
+        Object[] results = table.batch(gets);
+
+        Result[] results1 = new Result[results.length];
+        int i=0;
+        for( Object r : results) {
+          results1[i++] = (Result)r;
+        }
+
+        return ThriftUtilities.rowResultFromHBase(results1);
+      } catch (IOException e) {
+        throw new IOError(e.getMessage());
+      } catch (InterruptedException e) {
+        throw new IOError(e.getMessage());
+      }
+    }
+
+    @Override
+    public boolean queueIncrementColumnValues(List<org.apache.hadoop.hbase.thrift.generated.Increment> increments) throws TException {
+      List<TIncrement> tincs = new ArrayList<TIncrement>(increments.size());
+      for(org.apache.hadoop.hbase.thrift.generated.Increment i:increments) {
+        tincs.add(ThriftUtilities.tiincrementFromThrift(i));
+      }
+      return this.coalescer.queueIncrements(tincs);
+    }
+
+    @Override
+    public List<TRowResult> parallelScan(ScanSpec spec, List<ByteBuffer> startRows, List<ByteBuffer> endRows) throws IOError, TException {
+      return null;  //To change body of implemented methods use File | Settings | File Templates.
+    }
+
+    @Override
+    public ScanResult scan(ScanSpec spec, int nRows, boolean closeAfter) throws IOError, TException {
+      // Build a Scan object, populate it, then execute scan and return.
+      if (!spec.isSetTableName()) {
+        throw new IOError("Spec.tableName needs to be set!");
+      }
+      if (spec.prefixScan && !spec.isSetStartRow()) {
+        throw new IOError("If you set prefixScan you must also set startRow!");
+      }
+      if (spec.prefixScan && spec.isSetStopRow()) {
+        throw new IOError("Prefix scan with stop row not allowed");
+      }
+
+      ResultScanner scanner = null;
+
+      try {
+        HTable table = getTable(spec.getTableName());
+
+        // Set up scan!
+        Scan scan = new Scan();
+        if (spec.isSetStartRow()) {
+          scan.setStartRow(spec.getStartRow());
+        }
+        if (spec.isSetStopRow()) {
+          scan.setStopRow(spec.getStopRow());
+        }
+        if (spec.prefixScan) {
+          Filter f = new PrefixFilter(spec.getStartRow());
+          scan.setFilter(f);
+        }
+        if (spec.isSetColumns()) {
+          for (ByteBuffer column : spec.getColumns()) {
+            byte [][] famAndQf = KeyValue.parseColumn(getBytes(column));
+            if (famAndQf.length == 1) {
+              scan.addFamily(famAndQf[0]);
+            } else {
+              scan.addColumn(famAndQf[0], famAndQf[1]);
+            }
+          }
+        }
+        if (spec.isSetMaxVersions()) {
+          scan.setMaxVersions(spec.getMaxVersions());
+        }
+        if (spec.isSetEndTime() || spec.isSetStartTime()) {
+          // Process time filter here.
+          long startTime = Long.MIN_VALUE;
+          long endTime = Long.MAX_VALUE;
+          if (spec.isSetStartTime()) {
+            startTime = spec.getStartTime();
+          }
+          if (spec.isSetEndTime()) {
+            endTime = spec.getEndTime();
+          }
+          scan.setTimeRange(startTime, endTime);
+        }
+        // boolean defaults to false, but we want to default to 'true',
+        // so only set this if the client explicitly sets it.
+        if (spec.isSetCacheBlocks()) {
+          scan.setCacheBlocks(spec.cacheBlocks);
+        }
+        scan.setCaching(nRows+1);
+
+        // Start to execute scan...
+        scanner = table.getScanner(scan);
+        // need to actually grab the next one!
+
+        Result[] data = scanner.next(nRows);
+
+        Result nextOne = null;
+
+        // if we got the nRows worth, peek ahead and see if there is a next one.
+        if (data.length == nRows) {
+          nextOne = scanner.next();
+        }
+
+        int scannerId = 0;
+        if (closeAfter || nextOne == null) {
+          scanner.close();
+        } else {
+          ScannerAndNext sn = new ScannerAndNext(scanner,nextOne);
+          scannerId = nextScannerId.incrementAndGet();
+          newScannerMap.put(scannerId, sn);
+        }
+
+        // build our response.
+        ScanResult scanResult = new ScanResult();
+        scanResult.setResults(ThriftUtilities.rowResultFromHBase(data));
+        if (closeAfter || nextOne == null) {
+          scanResult.setHasMore(false);
+        } else {
+          scanResult.setHasMore(true);
+          scanResult.setScannerId(scannerId);
+        }
+
+        return scanResult;
+      } catch (IOException e) {
+        if (scanner != null) {
+          scanner.close();
+        }
+        throw new IOError(e.getMessage());
+      }
+    }
+
+    static class ScannerAndNext {
+      final ResultScanner scanner;
+      final Result next;
+      final long lastTimeUsed;
+
+      public ScannerAndNext(ResultScanner scanner,
+                            Result next) {
+        this.scanner = scanner;
+        this.next = next;
+        this.lastTimeUsed = System.currentTimeMillis();
+      }
+    }
+
+    protected Map<Integer, ScannerAndNext> newScannerMap =
+        new ConcurrentHashMap<Integer,ScannerAndNext>();
+
+    @Override
+    public ScanResult scanMore(int scannerId, int nRows, boolean closeAfter)
+        throws IOError, TException {
+      ScannerAndNext sn = newScannerMap.remove(scannerId);
+      if (sn == null) {
+        throw new IOError("No such scanner: " + scannerId);
+      }
+
+      try {
+        Result [] data = null;
+        // If we squirreled off a result in sn.next, need to produce it here.
+        if (sn.next !=  null) {
+          // We have a result from previous scan invocation.  Count it in.
+          Result [] interrim = nRows <= 1? new Result [0]:
+              sn.scanner.next(nRows - 1);
+          // Now assemble in data the fetched results and what we had up in
+          // sn.next, saved off from last call.
+          data = new Result[interrim.length + 1];
+          data[0] = sn.next;
+          int index = 0;
+          for (Result r: interrim) {
+            // pre-increment because we have something in first position.
+            data[++index] = r;
+          }
+        } else {
+          data = sn.scanner.next(nRows);
+        }
+
+        Result next = null;
+        if (data.length == nRows) {
+          next = sn.scanner.next();
+        }
+
+        ScanResult scanResult = new ScanResult();
+        scanResult.setResults(ThriftUtilities.rowResultFromHBase(data));
+        if (closeAfter || next == null) {
+          scanResult.setHasMore(false);
+          sn.scanner.close();
+        } else {
+          // next != null
+          scanResult.setHasMore(true);
+          scanResult.setScannerId(scannerId);
+
+          newScannerMap.put(scannerId,
+              new ScannerAndNext(sn.scanner,
+                  next));
+        }
+        return scanResult;
+      } catch (IOException ex) {
+        sn.scanner.close(); // scanner is dead now.
+
+        throw new IOError(ex.getMessage());
+      }
+    }
+
     private void initMetrics(ThriftMetrics metrics) {
       this.metrics = metrics;
     }
@@ -1412,7 +1620,8 @@ public class ThriftServerRunner implements Runnable {
 
       try {
         HTable table = getTable(tincrement.getTable());
-        Increment inc = ThriftUtilities.incrementFromThrift(tincrement);
+        org.apache.hadoop.hbase.client.Increment
+            inc = ThriftUtilities.incrementFromThrift(tincrement);
         table.increment(inc);
       } catch (IOException e) {
         LOG.warn(e.getMessage(), e);

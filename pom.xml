@@ -252,6 +252,18 @@
       <url>https://repository.apache.org/content/repositories/releases/</url>
     </repository>
     <repository>
+      <id>cloudera</id>
+      <url>https://repository.cloudera.com/artifactory/cloudera-repos/</url>
+    </repository>
+    <repository>
+      <id>temp-thrift</id>
+      <name>Thrift 0.7.0-su</name>
+      <url>http://people.apache.org/~jdcryans/releases/</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+    </repository>
+    <repository>
       <id>apache non-releases</id>
       <name>Apache non-releases</name>
       <url>http://people.apache.org/~stack/m2/repository</url>
@@ -302,6 +314,11 @@
         <enabled>true</enabled>
       </releases>
     </repository>
+    <repository>
+      <id>powermock-repo</id>
+      <url>http://powermock.googlecode.com/svn/repo/</url>
+    </repository>
+
   </repositories>
 
   <pluginRepositories>
@@ -1527,8 +1544,8 @@
         </property>
       </activation>
       <properties>
-        <hadoop.version>1.0.3</hadoop.version>
         <slf4j.version>1.4.3</slf4j.version>
+        <hadoop.version>0.20.2-cdh3u4</hadoop.version>
       </properties>
       <dependencies>
         <dependency>
@@ -1599,7 +1616,7 @@
     <profile>
       <id>security</id>
       <properties>
-        <hadoop.version>1.0.3</hadoop.version>
+        <hadoop.version>0.20.2-cdh3u4</hadoop.version>
       </properties>
       <build>
         <finalName>${project.artifactId}-${project.version}-security</finalName>
