@@ -1545,7 +1545,7 @@
       </activation>
       <properties>
         <slf4j.version>1.4.3</slf4j.version>
-        <hadoop.version>0.20.2-cdh3u4</hadoop.version>
+        <hadoop.version>0.20.2-cdh3u3-SNAPSHOT</hadoop.version>
       </properties>
       <dependencies>
         <dependency>
@@ -1616,7 +1616,7 @@
     <profile>
       <id>security</id>
       <properties>
-        <hadoop.version>0.20.2-cdh3u4</hadoop.version>
+        <hadoop.version>0.20.2-cdh3u3-SNAPSHOT</hadoop.version>
       </properties>
       <build>
         <finalName>${project.artifactId}-${project.version}-security</finalName>
