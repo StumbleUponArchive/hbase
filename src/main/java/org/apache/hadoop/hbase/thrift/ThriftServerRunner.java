@@ -38,6 +38,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.cli.CommandLine;
@@ -46,6 +47,7 @@ import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.hbase.Chore;
 import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HColumnDescriptor;
 import org.apache.hadoop.hbase.HConstants;
@@ -53,6 +55,7 @@ import org.apache.hadoop.hbase.HRegionInfo;
 import org.apache.hadoop.hbase.HTableDescriptor;
 import org.apache.hadoop.hbase.KeyValue;
 import org.apache.hadoop.hbase.ServerName;
+import org.apache.hadoop.hbase.Stoppable;
 import org.apache.hadoop.hbase.TableNotFoundException;
 import org.apache.hadoop.hbase.client.*;
 import org.apache.hadoop.hbase.filter.Filter;
@@ -488,6 +491,12 @@ public class ThriftServerRunner implements Runnable {
       admin = new HBaseAdmin(conf);
       scannerMap = new HashMap<Integer, ResultScanner>();
       this.coalescer = new IncrementCoalescer(this);
+
+      int scannerTimeout =
+          this.conf.getInt("hbase.thrift.scanner.cleaner.timeout", 6000000);
+      ScannerCleaner cleaner =
+          new ScannerCleaner("Scanner cleaner", scannerTimeout, STOPPABLE);
+      cleaner.start();
     }
 
     @Override
@@ -1531,6 +1540,59 @@ public class ThriftServerRunner implements Runnable {
       }
     }
 
+    private Stoppable STOPPABLE = new Stoppable() {
+      final AtomicBoolean stop = new AtomicBoolean(false);
+
+      @Override
+      public boolean isStopped() {
+        return this.stop.get();
+      }
+
+      @Override
+      public void stop(String why) {
+        LOG.info("STOPPING BECAUSE: " + why);
+        this.stop.set(true);
+      }
+
+    };
+
+    /**
+     * Class that's used to clean the scanners that aren't closed after the
+     * defined period of time. Only works for the new scanners
+     */
+    class ScannerCleaner extends Chore {
+
+      final int timeout;
+
+      public ScannerCleaner(String name, final int p,
+                            final Stoppable stopper) {
+        super(name, p, stopper);
+        this.timeout = p;
+      }
+
+      @Override
+      protected void chore() {
+
+        // Iterate over all the current scanners
+        for (java.util.Map.Entry<Integer, ScannerAndNext> scanAndNext :
+            newScannerMap.entrySet()) {
+          ScannerAndNext scan = scanAndNext.getValue();
+
+          // if over the timeout, clean
+          if ((System.currentTimeMillis() - scan.lastTimeUsed) > this.timeout) {
+            Integer key = scanAndNext.getKey();
+            Result next = scan.next;
+            LOG.info("ATTENTION This scanner has been there for a long time," +
+                " closing: " + key + (scan.next == null ? "" :
+                ", and here's the next row: " + next.toString()) );
+            newScannerMap.remove(key);
+            // This is normally expired
+            scan.scanner.close();
+          }
+        }
+      }
+    }
+
     static class ScannerAndNext {
       final ResultScanner scanner;
       final Result next;
@@ -1543,6 +1605,8 @@ public class ThriftServerRunner implements Runnable {
         this.lastTimeUsed = System.currentTimeMillis();
       }
     }
+
+
 
     protected Map<Integer, ScannerAndNext> newScannerMap =
         new ConcurrentHashMap<Integer,ScannerAndNext>();
