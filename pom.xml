@@ -1545,11 +1545,11 @@
       </activation>
       <properties>
         <slf4j.version>1.4.3</slf4j.version>
-        <hadoop.version>0.20.2-cdh3u3-SNAPSHOT</hadoop.version>
+        <hadoop.version>0.20.2-cdh3u3-SNAPSHOT-SU</hadoop.version>
       </properties>
       <dependencies>
         <dependency>
-          <groupId>org.apache.hadoop</groupId>
+          <groupId>com.cloudera.hadoop</groupId>
           <artifactId>hadoop-core</artifactId>
           <version>${hadoop.version}</version>
           <optional>true</optional>
@@ -1577,7 +1577,7 @@
           </exclusions>
         </dependency>
         <dependency>
-          <groupId>org.apache.hadoop</groupId>
+          <groupId>com.cloudera.hadoop</groupId>
           <artifactId>hadoop-test</artifactId>
           <version>${hadoop.version}</version>
           <optional>true</optional>
