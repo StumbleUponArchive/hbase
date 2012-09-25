@@ -953,10 +953,10 @@ public class HConnectionManager {
           synchronized (regionLockObject) {
             // If the parent table is META, we may want to pre-fetch some
             // region info into the global region cache for this table.
-            if (Bytes.equals(parentTable, HConstants.META_TABLE_NAME) &&
+            /*if (Bytes.equals(parentTable, HConstants.META_TABLE_NAME) &&
                 (getRegionCachePrefetch(tableName)) )  {
               prefetchRegionCache(tableName, row);
-            }
+            }*/
 
             // Check the cache again for a hit in case some other thread made the
             // same query while we were waiting on the lock. If not supposed to

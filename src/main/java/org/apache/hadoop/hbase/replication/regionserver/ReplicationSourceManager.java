@@ -29,8 +29,10 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -148,15 +150,13 @@ public class ReplicationSourceManager {
    */
   public void logPositionAndCleanOldLogs(Path log, String id, long position, boolean queueRecovered) {
     String key = log.getName();
-    LOG.info("Going to report log #" + key + " for position " + position + " in " + log);
     this.zkHelper.writeReplicationStatus(key, id, position);
     synchronized (this.hlogsById) {
       SortedSet<String> hlogs = this.hlogsById.get(id);
       if (!queueRecovered && hlogs.first() != key) {
         SortedSet<String> hlogSet = hlogs.headSet(key);
-        LOG.info("Removing " + hlogSet.size() +
-            " logs in the list: " + hlogSet);
         for (String hlog : hlogSet) {
+          LOG.debug("Finished replicating log: " + hlog);
           this.zkHelper.removeLogFromList(hlog, id);
         }
         hlogSet.clear();
@@ -623,5 +623,21 @@ public class ReplicationSourceManager {
    */
   public FileSystem getFs() {
     return this.fs;
+  }
+
+  /**
+   *
+   */
+  public String getStats() {
+    StringBuffer stats = new StringBuffer();
+    for (ReplicationSourceInterface source : sources) {
+      stats.append("Normal source for cluster " + source.getPeerClusterId() + ": ");
+      stats.append(source.getStats() + "\n");
+    }
+    for (ReplicationSourceInterface oldSource : oldsources) {
+      stats.append("Recovered source for cluster/machine(s) " + oldSource.getPeerClusterId() + ": ");
+      stats.append(oldSource.getStats()+ "\n");
+    }
+    return stats.toString();
   }
 }

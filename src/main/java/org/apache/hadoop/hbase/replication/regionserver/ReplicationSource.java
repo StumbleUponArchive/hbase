@@ -338,10 +338,6 @@ public class ReplicationSource extends Thread
         }
       } finally {
         try {
-          // if current path is null, it means we processEndOfFile hence
-          if (this.currentPath != null && !gotIOE) {
-            this.position = this.reader.getPosition();
-          }
           if (this.reader != null) {
             this.reader.close();
           }
@@ -391,7 +387,8 @@ public class ReplicationSource extends Thread
     if (this.position != 0) {
       this.reader.seek(this.position);
     }
-    HLog.Entry entry = this.reader.next(this.entriesArray[currentNbEntries]);
+    long startPosition = this.position;
+    HLog.Entry entry = readNextAndSetPosition();
     while (entry != null) {
       WALEdit edit = entry.getEdit();
       this.metrics.logEditsReadRate.inc(1);
@@ -420,25 +417,39 @@ public class ReplicationSource extends Thread
         }
       }
       // Stop if too many entries or too big
-      if ((this.reader.getPosition() - this.position)
+      if ((this.reader.getPosition() - startPosition)
           >= this.replicationQueueSizeCapacity ||
           currentNbEntries >= this.replicationQueueNbCapacity) {
         break;
       }
       try {
-        entry = this.reader.next(entriesArray[currentNbEntries]);
+        entry = readNextAndSetPosition();
       } catch (IOException ie) {
         LOG.debug("Break on IOE: " + ie.getMessage());
         break;
       }
     }
-    LOG.debug("currentNbOperations:" + currentNbOperations +
-        " and seenEntries:" + seenEntries +
-        " and size: " + (this.reader.getPosition() - this.position));
     // If we didn't get anything and the queue has an object, it means we
     // hit the end of the file for sure
     return seenEntries == 0 && processEndOfFile();
   }
+
+  private HLog.Entry readNextAndSetPosition() throws IOException {
+    HLog.Entry entry;
+    try {
+      entry = this.reader.next(entriesArray[currentNbEntries]);
+    } catch (IndexOutOfBoundsException ioobe) {
+      FileStatus stat = this.fs.getFileStatus(this.currentPath);
+      LOG.warn("Couldn't read this file" + stat, ioobe);
+      return null;
+    }
+    // Store the position so that in the future the reader can start
+    // reading from here. If the above call to next() throws an
+    // exception, the position won't be changed and retry will happen
+    // from the last known good position
+    this.position = this.reader.getPosition();
+    return entry;
+  } 
 
   private void connectToPeers() {
     // Connect to peer cluster first, unless we have to stop
@@ -477,8 +488,6 @@ public class ReplicationSource extends Thread
    */
   protected boolean openReader(int sleepMultiplier) {
     try {
-      LOG.debug("Opening log for replication " + this.currentPath.getName() +
-          " at " + this.position);
       try {
        this.reader = null;
        this.reader = HLog.getReader(this.fs, this.currentPath, this.conf);
@@ -552,7 +561,9 @@ public class ReplicationSource extends Thread
    */
   protected boolean sleepForRetries(String msg, int sleepMultiplier) {
     try {
-      LOG.debug(msg + ", sleeping " + sleepForRetries + " times " + sleepMultiplier);
+      if (sleepMultiplier == maxRetriesMultiplier) {
+        LOG.debug(msg + ", sleeping " + sleepForRetries + " times " + sleepMultiplier);
+      }
       Thread.sleep(this.sleepForRetries * sleepMultiplier);
     } catch (InterruptedException e) {
       LOG.debug("Interrupted while sleeping between retries");
@@ -613,7 +624,6 @@ public class ReplicationSource extends Thread
       }
       try {
         HRegionInterface rrs = getRS();
-        LOG.debug("Replicating " + currentNbEntries);
         rrs.replicateLogEntries(Arrays.copyOf(this.entriesArray, currentNbEntries));
         if (this.lastLoggedPosition != this.position) {
           this.manager.logPositionAndCleanOldLogs(this.currentPath,
@@ -626,7 +636,6 @@ public class ReplicationSource extends Thread
             this.currentNbOperations);
         this.metrics.setAgeOfLastShippedOp(
             this.entriesArray[currentNbEntries-1].getKey().getWriteTime());
-        LOG.debug("Replicated in total: " + this.totalReplicatedEdits);
         break;
 
       } catch (IOException ioe) {
@@ -816,5 +825,12 @@ public class ReplicationSource extends Thread
       String[] parts = p.getName().split("\\.");
       return Long.parseLong(parts[parts.length-1]);
     }
+  }
+
+  @Override
+  public String getStats() {
+    return "Total replicated edits: " + totalReplicatedEdits +
+      ", currently replicating from: " + this.currentPath +
+      " at position: " + this.position;
   }
 }
