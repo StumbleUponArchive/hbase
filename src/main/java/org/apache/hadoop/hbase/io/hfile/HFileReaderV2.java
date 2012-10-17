@@ -291,8 +291,8 @@ public class HFileReaderV2 extends AbstractHFileReader {
    */
   @Override
   public HFileBlock readBlock(long dataBlockOffset, long onDiskBlockSize,
-      final boolean cacheBlock, boolean pread, final boolean isCompaction,
-      BlockType expectedBlockType)
+                              final boolean cacheBlock, boolean pread, final boolean isCompaction,
+                              BlockType expectedBlockType)
       throws IOException {
     if (dataBlockIndexReader == null) {
       throw new IOException("Block index not loaded");
@@ -313,73 +313,87 @@ public class HFileReaderV2 extends AbstractHFileReader {
         new BlockCacheKey(name, dataBlockOffset,
             dataBlockEncoder.getEffectiveEncodingInCache(isCompaction),
             expectedBlockType);
-    IdLock.Entry lockEntry = offsetLock.getLockEntry(dataBlockOffset);
+
+    boolean useLock = false;
+    IdLock.Entry lockEntry = null;
+    blockLoads.incrementAndGet();
     try {
-      blockLoads.incrementAndGet();
-
-      // Check cache for block. If found return.
-      if (cacheConf.isBlockCacheEnabled()) {
-        HFileBlock cachedBlock = (HFileBlock)
-            cacheConf.getBlockCache().getBlock(cacheKey, cacheBlock);
-        if (cachedBlock != null) {
-          BlockCategory blockCategory =
-              cachedBlock.getBlockType().getCategory();
-          cacheHits.incrementAndGet();
-
-          getSchemaMetrics().updateOnCacheHit(blockCategory, isCompaction);
-
-          if (cachedBlock.getBlockType() == BlockType.DATA) {
-            HFile.dataBlockReadCnt.incrementAndGet();
-          }
-
-          validateBlockType(cachedBlock, expectedBlockType);
-
-          // Validate encoding type for encoded blocks. We include encoding
-          // type in the cache key, and we expect it to match on a cache hit.
-          if (cachedBlock.getBlockType() == BlockType.ENCODED_DATA &&
-              cachedBlock.getDataBlockEncoding() !=
-              dataBlockEncoder.getEncodingInCache()) {
-            throw new IOException("Cached block under key " + cacheKey + " " +
-                "has wrong encoding: " + cachedBlock.getDataBlockEncoding() +
-                " (expected: " + dataBlockEncoder.getEncodingInCache() + ")");
-          }
-
-          logBlock(cacheKey, cachedBlock, cacheBlock, cacheConf.isInMemory());
-
-          return cachedBlock;
+      while (true) {
+        if (useLock) {
+          lockEntry = offsetLock.getLockEntry(dataBlockOffset);
         }
-        // Carry on, please load.
+
+        // Check cache for block. If found return.
+        if (cacheConf.isBlockCacheEnabled()) {
+          HFileBlock cachedBlock = (HFileBlock)
+              cacheConf.getBlockCache().getBlock(cacheKey, cacheBlock);
+          if (cachedBlock != null) {
+            BlockCategory blockCategory =
+                cachedBlock.getBlockType().getCategory();
+            cacheHits.incrementAndGet();
+
+            getSchemaMetrics().updateOnCacheHit(blockCategory, isCompaction);
+
+            if (cachedBlock.getBlockType() == BlockType.DATA) {
+              HFile.dataBlockReadCnt.incrementAndGet();
+            }
+
+            validateBlockType(cachedBlock, expectedBlockType);
+
+            // Validate encoding type for encoded blocks. We include encoding
+            // type in the cache key, and we expect it to match on a cache hit.
+            if (cachedBlock.getBlockType() == BlockType.ENCODED_DATA &&
+                cachedBlock.getDataBlockEncoding() !=
+                    dataBlockEncoder.getEncodingInCache()) {
+              throw new IOException("Cached block under key " + cacheKey + " " +
+                  "has wrong encoding: " + cachedBlock.getDataBlockEncoding() +
+                  " (expected: " + dataBlockEncoder.getEncodingInCache() + ")");
+            }
+
+            logBlock(cacheKey, cachedBlock, cacheBlock, cacheConf.isInMemory());
+
+            return cachedBlock;
+          }
+          // Carry on, please load.
+        }
+        if (!useLock) {
+          // check cache again with lock
+          useLock = true;
+          continue;
+        }
+
+        // Load block from filesystem.
+        long startTimeNs = System.nanoTime();
+        HFileBlock hfileBlock = fsBlockReader.readBlockData(dataBlockOffset,
+            onDiskBlockSize, -1, pread);
+        hfileBlock = dataBlockEncoder.diskToCacheFormat(hfileBlock,
+            isCompaction);
+        validateBlockType(hfileBlock, expectedBlockType);
+        passSchemaMetricsTo(hfileBlock);
+        BlockCategory blockCategory = hfileBlock.getBlockType().getCategory();
+        logBlock(cacheKey, hfileBlock, cacheBlock, cacheConf.isInMemory());
+
+        final long delta = System.nanoTime() - startTimeNs;
+        HFile.offerReadLatency(delta, pread);
+        getSchemaMetrics().updateOnCacheMiss(blockCategory, isCompaction, delta);
+
+        // Cache the block if necessary
+        if (cacheBlock && cacheConf.shouldCacheBlockOnRead(
+            hfileBlock.getBlockType().getCategory())) {
+          cacheConf.getBlockCache().cacheBlock(cacheKey, hfileBlock,
+              cacheConf.isInMemory());
+        }
+
+        if (hfileBlock.getBlockType() == BlockType.DATA) {
+          HFile.dataBlockReadCnt.incrementAndGet();
+        }
+
+        return hfileBlock;
       }
-
-      // Load block from filesystem.
-      long startTimeNs = System.nanoTime();
-      HFileBlock hfileBlock = fsBlockReader.readBlockData(dataBlockOffset,
-          onDiskBlockSize, -1, pread);
-      hfileBlock = dataBlockEncoder.diskToCacheFormat(hfileBlock,
-          isCompaction);
-      validateBlockType(hfileBlock, expectedBlockType);
-      passSchemaMetricsTo(hfileBlock);
-      BlockCategory blockCategory = hfileBlock.getBlockType().getCategory();
-      logBlock(cacheKey, hfileBlock, cacheBlock, cacheConf.isInMemory());
-
-      final long delta = System.nanoTime() - startTimeNs;
-      HFile.offerReadLatency(delta, pread);
-      getSchemaMetrics().updateOnCacheMiss(blockCategory, isCompaction, delta);
-
-      // Cache the block if necessary
-      if (cacheBlock && cacheConf.shouldCacheBlockOnRead(
-              hfileBlock.getBlockType().getCategory())) {
-        cacheConf.getBlockCache().cacheBlock(cacheKey, hfileBlock,
-            cacheConf.isInMemory());
-      }
-
-      if (hfileBlock.getBlockType() == BlockType.DATA) {
-        HFile.dataBlockReadCnt.incrementAndGet();
-      }
-
-      return hfileBlock;
     } finally {
-      offsetLock.releaseLockEntry(lockEntry);
+      if (lockEntry != null) {
+        offsetLock.releaseLockEntry(lockEntry);
+      }
     }
   }
 
